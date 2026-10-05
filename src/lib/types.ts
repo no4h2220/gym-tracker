@@ -36,7 +36,8 @@ export interface PlanItem {
 export interface PlanDay {
   id: string
   plan_id: string
-  weekday: number // 1 = Monday … 7 = Sunday
+  /** ISO weekdays this day is trained on (1 = Monday … 7 = Sunday), sorted */
+  weekdays: number[]
   label: string
   focus: string | null
   items: PlanItem[]

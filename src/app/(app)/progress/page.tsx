@@ -38,7 +38,7 @@ function Progress() {
 
   const inPlan = useMemo(() => {
     const m = new Map<string, string>()
-    for (const d of [...days].sort((a, b) => a.weekday - b.weekday)) for (const it of d.items) if (!m.has(it.exercise_id)) m.set(it.exercise_id, d.label)
+    for (const d of days) for (const it of d.items) if (!m.has(it.exercise_id)) m.set(it.exercise_id, d.label)
     return m
   }, [days])
 

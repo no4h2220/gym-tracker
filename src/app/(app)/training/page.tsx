@@ -46,10 +46,15 @@ export default function TrainingPage() {
   const date = todayStr()
   const reduce = useReducedMotion()
 
-  const sortedDays = useMemo(() => [...days].sort((a, b) => a.weekday - b.weekday), [days])
+  const sortedDays = days
+  // one button per trained weekday; linked days (Torso Mo + Do) appear on both
+  const slots = useMemo(
+    () => days.flatMap((d) => d.weekdays.map((w) => ({ weekday: w, day: d }))).sort((a, b) => a.weekday - b.weekday),
+    [days],
+  )
   const [weekday, setWeekday] = useState<number | null>(null)
-  const effectiveWeekday = weekday ?? (sortedDays.some((d) => d.weekday === isoWeekday()) ? isoWeekday() : null)
-  const day = sortedDays.find((d) => d.weekday === effectiveWeekday) ?? null
+  const effectiveWeekday = weekday ?? (slots.some((s) => s.weekday === isoWeekday()) ? isoWeekday() : null)
+  const day = slots.find((s) => s.weekday === effectiveWeekday)?.day ?? null
 
   const exById = useMemo(() => new Map<string, Exercise>(exercises.map((e) => [e.id, e])), [exercises])
   const items = useMemo(() => day?.items ?? [], [day])
@@ -169,15 +174,15 @@ export default function TrainingPage() {
 
   const daySelector = (
     <nav aria-label={t.weekday} className="anim-rise flex gap-1.5" style={{ "--i": 1 } as React.CSSProperties}>
-      {sortedDays.map((d) => {
-        const on = d.weekday === effectiveWeekday
+      {slots.map((sl) => {
+        const on = sl.weekday === effectiveWeekday
         return (
           <button
-            key={d.id}
+            key={sl.weekday}
             type="button"
             aria-pressed={on}
             onClick={() => {
-              setWeekday(d.weekday)
+              setWeekday(sl.weekday)
               setExpanded(null)
             }}
             className={cn(
@@ -185,7 +190,7 @@ export default function TrainingPage() {
               on ? "bg-primary font-extrabold text-primary-foreground" : "border border-border font-semibold text-muted-foreground",
             )}
           >
-            {t.weekdaysShort[d.weekday - 1]}
+            {t.weekdaysShort[sl.weekday - 1]}
           </button>
         )
       })}

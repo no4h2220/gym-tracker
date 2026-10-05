@@ -33,6 +33,7 @@ import {
   removePlanItem,
   renamePlan,
   reorderPlanItems,
+  takeWeekday,
   updateDay,
   updateExercise,
   updatePlanItem,
@@ -63,9 +64,9 @@ export default function PlanPage() {
   const reduce = useReducedMotion()
   const [planId, setPlanId] = useState<string | null>(null)
   const plan = plans.find((p) => p.id === planId) ?? activePlan ?? plans[0] ?? null
-  const sorted = useMemo(() => [...(plan?.days ?? [])].sort((a, b) => a.weekday - b.weekday), [plan])
+  const sorted = useMemo(() => plan?.days ?? [], [plan])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const day = sorted.find((d) => d.id === selectedId) ?? sorted.find((d) => d.weekday === isoWeekday()) ?? sorted[0] ?? null
+  const day = sorted.find((d) => d.id === selectedId) ?? sorted.find((d) => d.weekdays.includes(isoWeekday())) ?? sorted[0] ?? null
   const exById = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises])
 
   const [editItem, setEditItem] = useState<PlanItem | null>(null)
@@ -153,12 +154,14 @@ export default function PlanPage() {
                     aria-hidden="true"
                   />
                 )}
-                <span className={cn("num relative text-[11px]", on ? "opacity-70" : "text-muted-foreground")}>{t.weekdaysShort[d.weekday - 1]}</span>
+                <span className={cn("num relative text-[11px] whitespace-nowrap", on ? "opacity-70" : "text-muted-foreground")}>
+                  {d.weekdays.map((w) => t.weekdaysShort[w - 1]).join(" · ")}
+                </span>
                 <span className="relative text-sm font-bold">{d.label}</span>
               </button>
             )
           })}
-          {sorted.length < 7 && (
+          {sorted.flatMap((d) => d.weekdays).length < 7 && (
             <button
               type="button"
               onClick={() => setDayEdit("new")}
@@ -244,7 +247,7 @@ export default function PlanPage() {
         <DaySheet
           value={dayEdit}
           planId={plan.id}
-          usedWeekdays={sorted.map((d) => d.weekday)}
+          days={sorted}
           onClose={() => setDayEdit(null)}
           onChanged={async (selectId) => {
             await reloadPlan()
@@ -394,7 +397,13 @@ function PlansSheet({ open, onClose, current, onPick }: { open: boolean; onClose
                     >
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate text-[15px] font-semibold">{p.name}</span>
-                        <span className="num text-[11px] text-muted-foreground">{p.days.map((d) => t.weekdaysShort[d.weekday - 1]).join(" · ") || "–"}</span>
+                        <span className="num text-[11px] text-muted-foreground">
+                          {p.days
+                            .flatMap((d) => d.weekdays)
+                            .sort((a, b) => a - b)
+                            .map((w) => t.weekdaysShort[w - 1])
+                            .join(" · ") || "–"}
+                        </span>
                       </span>
                       {p.id === activePlan?.id && (
                         <span className="num shrink-0 rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground uppercase">{t.activePlan}</span>
@@ -762,34 +771,66 @@ function AddSheet({
 function DaySheet({
   value,
   planId,
-  usedWeekdays,
+  days,
   onClose,
   onChanged,
 }: {
   value: PlanDay | "new" | null
   planId: string
-  usedWeekdays: number[]
+  days: PlanDay[]
   onClose: () => void
   onChanged: (selectId?: string | null) => Promise<void>
 }) {
   const { t } = useApp()
   const isNew = value === "new"
   const base = value && value !== "new" ? value : null
-  const free = [1, 2, 3, 4, 5, 6, 7].filter((w) => !usedWeekdays.includes(w) || w === base?.weekday)
-  const [draft, setDraft] = useState<{ key: string; label: string; focus: string; weekday: number } | null>(null)
+  const ownerOf = (w: number) => days.find((d) => d.weekdays.includes(w)) ?? null
+  const firstFree = [1, 2, 3, 4, 5, 6, 7].find((w) => !ownerOf(w))
+  const [draft, setDraft] = useState<{ key: string; label: string; focus: string; weekdays: number[] } | null>(null)
   const k = isNew ? "new" : (base?.id ?? "")
-  const cur = draft && draft.key === k ? draft : { key: k, label: base?.label ?? "", focus: base?.focus ?? "", weekday: base?.weekday ?? free[0] ?? 1 }
+  const cur =
+    draft && draft.key === k
+      ? draft
+      : { key: k, label: base?.label ?? "", focus: base?.focus ?? "", weekdays: base?.weekdays ?? (firstFree ? [firstFree] : []) }
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState(false)
 
+  // weekdays that currently belong to another day and will be moved to this one
+  const takeovers = cur.weekdays.filter((w) => {
+    const o = ownerOf(w)
+    return o && o.id !== base?.id
+  })
+  const merged = [...new Set(takeovers.map((w) => ownerOf(w)!).filter((o) => o.weekdays.every((w) => cur.weekdays.includes(w))).map((o) => o.label))]
+
+  function toggle(w: number) {
+    const has = cur.weekdays.includes(w)
+    if (has && cur.weekdays.length === 1) return
+    setDraft({ ...cur, weekdays: has ? cur.weekdays.filter((x) => x !== w) : [...cur.weekdays, w].sort((a, b) => a - b) })
+  }
+
   async function save() {
     const label = cur.label.trim()
-    if (!label) return
+    if (!label || !cur.weekdays.length) return
     setBusy(true)
     try {
-      if (isNew) await addDay(planId, cur.weekday, label, cur.focus.trim() || null)
-      else if (base) await updateDay(base.id, { label, focus: cur.focus.trim() || null, weekday: cur.weekday })
-      await onChanged()
+      const focus = cur.focus.trim() || null
+      const own = cur.weekdays.filter((w) => !takeovers.includes(w))
+      if (isNew) {
+        const id = await addDay(planId, own, label, focus)
+        await onChanged(id)
+      } else if (base) {
+        const local = days.map((d) => ({ ...d, weekdays: [...d.weekdays] }))
+        // 1. keep only this day's own picks (if none are left, keep the old ones for now)
+        const first = own.length ? own : base.weekdays
+        await updateDay(base.id, { label, focus, weekdays: first })
+        local.find((d) => d.id === base.id)!.weekdays = first
+        // 2. take weekdays from other days (merging a day that loses its last weekday)
+        for (const w of takeovers) await takeWeekday(local, base.id, w)
+        // 3. final set, e.g. when only foreign weekdays were picked
+        const now = local.find((d) => d.id === base.id)!.weekdays
+        if (now.join() !== cur.weekdays.join()) await updateDay(base.id, { weekdays: cur.weekdays })
+        await onChanged(base.id)
+      }
       setDraft(null)
       onClose()
     } catch {
@@ -847,30 +888,38 @@ function DaySheet({
             <Input id="day-focus" value={cur.focus} maxLength={80} placeholder="Brust · Schultern…" onChange={(e) => setDraft({ ...cur, focus: e.target.value })} />
           </div>
           <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 text-sm font-medium">{t.weekday}</legend>
+            <legend className="mb-1 text-sm font-medium">{t.weekdaysPick}</legend>
+            <p className="mb-1 text-xs text-muted-foreground">{t.weekdaysHint}</p>
             <div className="grid grid-cols-7 gap-1.5">
               {[1, 2, 3, 4, 5, 6, 7].map((w) => {
-                const allowed = free.includes(w)
-                const on = cur.weekday === w
+                const on = cur.weekdays.includes(w)
+                const owner = ownerOf(w)
+                const foreign = owner && owner.id !== base?.id
                 return (
                   <button
                     key={w}
                     type="button"
-                    disabled={!allowed}
                     aria-pressed={on}
-                    onClick={() => setDraft({ ...cur, weekday: w })}
+                    disabled={isNew && !!foreign}
+                    onClick={() => toggle(w)}
                     className={cn(
-                      "h-11 rounded-xl text-xs font-bold transition-colors disabled:opacity-30",
+                      "flex h-12 flex-col items-center justify-center rounded-xl text-xs font-bold transition-colors disabled:opacity-30",
                       on ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground",
                     )}
                   >
                     {t.weekdaysShort[w - 1]}
+                    {foreign && !on && <span className="max-w-full truncate px-0.5 text-[9px] font-medium opacity-70">{owner.label}</span>}
                   </button>
                 )
               })}
             </div>
+            {takeovers.length > 0 && (
+              <p className="text-xs text-primary" role="status">
+                {t.takeoverNote(takeovers.map((w) => t.weekdaysShort[w - 1]).join(", "), merged)}
+              </p>
+            )}
           </fieldset>
-          <Button type="submit" size="lg" disabled={busy || !cur.label.trim()}>
+          <Button type="submit" size="lg" disabled={busy || !cur.label.trim() || !cur.weekdays.length}>
             {t.save}
           </Button>
           {base && (

@@ -48,7 +48,7 @@ export async function loadPlan(): Promise<{ plans: Plan[]; exercises: Exercise[]
   const [plansRes, exRes] = await Promise.all([
     sb
       .from("plans")
-      .select(`id, name, created_at, plan_days(id, plan_id, weekday, label, focus, plan_items(${ITEM_COLS}))`)
+      .select(`id, name, created_at, plan_days(id, plan_id, weekdays, label, focus, plan_items(${ITEM_COLS}))`)
       .order("created_at"),
     sb.from("exercises").select("id, name, notes, archived").order("name"),
   ])
@@ -60,12 +60,12 @@ export async function loadPlan(): Promise<{ plans: Plan[]; exercises: Exercise[]
       .map((d) => ({
         id: d.id,
         plan_id: d.plan_id,
-        weekday: d.weekday,
+        weekdays: [...(d.weekdays ?? [])].sort((a, b) => a - b),
         label: d.label,
         focus: d.focus,
         items: [...d.plan_items].sort((a, b) => a.position - b.position),
       }))
-      .sort((a, b) => a.weekday - b.weekday),
+      .sort((a, b) => (a.weekdays[0] ?? 9) - (b.weekdays[0] ?? 9)),
   }))
   return { plans, exercises: check(exRes) as Exercise[] }
 }
@@ -124,12 +124,41 @@ export async function reorderPlanItems(dayId: string, ids: string[]) {
   check(await supabase().rpc("reorder_plan_items", { p_day: dayId, p_ids: ids }))
 }
 
-export async function addDay(planId: string, weekday: number, label: string, focus: string | null) {
-  check(await supabase().from("plan_days").insert({ plan_id: planId, weekday, label, focus }))
+export async function addDay(planId: string, weekdays: number[], label: string, focus: string | null): Promise<string> {
+  const res = await supabase()
+    .from("plan_days")
+    .insert({ plan_id: planId, weekday: weekdays[0], weekdays, label, focus })
+    .select("id")
+    .single()
+  return (check(res) as { id: string }).id
 }
 
-export async function updateDay(id: string, patch: Partial<Pick<PlanDay, "label" | "focus" | "weekday">>) {
+export async function updateDay(id: string, patch: Partial<Pick<PlanDay, "label" | "focus" | "weekdays">>) {
   check(await supabase().from("plan_days").update(patch).eq("id", id))
+}
+
+/**
+ * Give a weekday to a day. If another day of the same plan had that weekday, it loses it;
+ * when that was its only weekday, the other day is merged in: its past workouts are moved
+ * to this day and the other day is removed.
+ */
+export async function takeWeekday(days: PlanDay[], dayId: string, weekday: number) {
+  const sb = supabase()
+  const target = days.find((d) => d.id === dayId)
+  if (!target || target.weekdays.includes(weekday)) return
+  const other = days.find((d) => d.id !== dayId && d.weekdays.includes(weekday))
+  if (other) {
+    if (other.weekdays.length > 1) {
+      check(await sb.from("plan_days").update({ weekdays: other.weekdays.filter((w) => w !== weekday) }).eq("id", other.id))
+    } else {
+      check(await sb.from("sessions").update({ day_id: dayId }).eq("day_id", other.id))
+      check(await sb.from("plan_days").delete().eq("id", other.id))
+    }
+  }
+  const next = [...target.weekdays, weekday].sort((a, b) => a - b)
+  check(await sb.from("plan_days").update({ weekdays: next }).eq("id", dayId))
+  target.weekdays = next
+  if (other) other.weekdays = other.weekdays.filter((w) => w !== weekday)
 }
 
 export async function deleteDay(id: string) {
