@@ -5,6 +5,13 @@ export interface Profile {
   display_name: string | null
   accent: string
   lang: Lang
+  active_plan_id: string | null
+}
+
+export interface Plan {
+  id: string
+  name: string
+  days: PlanDay[]
 }
 
 export interface Exercise {
@@ -28,6 +35,7 @@ export interface PlanItem {
 
 export interface PlanDay {
   id: string
+  plan_id: string
   weekday: number // 1 = Monday … 7 = Sunday
   label: string
   focus: string | null

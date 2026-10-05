@@ -6,13 +6,17 @@ import { supabase } from "@/lib/supabase"
 import { DICTS, type Dict } from "@/lib/i18n"
 import { ACCENTS, LANG_STORAGE_KEY, applyAccent } from "@/lib/accent"
 import { flushOutbox, loadPlan, loadProfile, updateProfile } from "@/lib/data"
-import type { Exercise, Lang, PlanDay, Profile } from "@/lib/types"
+import type { Exercise, Lang, Plan, PlanDay, Profile } from "@/lib/types"
 import { toast } from "sonner"
 
 interface AppState {
   session: Session | null
   authReady: boolean
   profile: Profile | null
+  plans: Plan[]
+  /** the plan used for training (falls back to the first plan) */
+  activePlan: Plan | null
+  /** days of the active plan */
   days: PlanDay[]
   exercises: Exercise[]
   planReady: boolean
@@ -22,7 +26,8 @@ interface AppState {
   setAccent: (id: string) => void
   setDisplayName: (n: string) => Promise<void>
   reloadPlan: () => Promise<void>
-  setDays: (fn: (d: PlanDay[]) => PlanDay[]) => void
+  setPlans: (fn: (p: Plan[]) => Plan[]) => void
+  setActivePlan: (id: string) => void
   setExercises: (fn: (e: Exercise[]) => Exercise[]) => void
 }
 
@@ -43,7 +48,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [days, setDaysState] = useState<PlanDay[]>([])
+  const [plans, setPlansState] = useState<Plan[]>([])
   const [exercises, setExercisesState] = useState<Exercise[]>([])
   const [planReady, setPlanReady] = useState(false)
   const [lang, setLangState] = useState<Lang>(initialLang)
@@ -59,7 +64,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAuthReady(true)
       if (!s) {
         setProfile(null)
-        setDaysState([])
+        setPlansState([])
         setExercisesState([])
         setPlanReady(false)
       }
@@ -71,7 +76,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const reloadPlan = useCallback(async () => {
     const p = await loadPlan()
-    setDaysState(p.days)
+    setPlansState(p.plans)
     setExercisesState(p.exercises)
     setPlanReady(true)
   }, [])
@@ -94,7 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadPlan()
       .then((p) => {
         if (!alive) return
-        setDaysState(p.days)
+        setPlansState(p.plans)
         setExercisesState(p.exercises)
       })
       .catch((e: unknown) => {
@@ -154,11 +159,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [uid],
   )
 
+  const setActivePlan = useCallback(
+    (id: string) => {
+      setProfile((p) => (p ? { ...p, active_plan_id: id } : p))
+      if (uid) updateProfile(uid, { active_plan_id: id }).catch(() => {})
+    },
+    [uid],
+  )
+
+  const activePlan = useMemo(
+    () => plans.find((p) => p.id === profile?.active_plan_id) ?? plans[0] ?? null,
+    [plans, profile?.active_plan_id],
+  )
+  const days = useMemo(() => activePlan?.days ?? [], [activePlan])
+
   const value = useMemo<AppState>(
     () => ({
       session,
       authReady,
       profile,
+      plans,
+      activePlan,
       days,
       exercises,
       planReady,
@@ -168,10 +189,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAccent,
       setDisplayName,
       reloadPlan,
-      setDays: (fn) => setDaysState(fn),
+      setPlans: (fn) => setPlansState(fn),
+      setActivePlan,
       setExercises: (fn) => setExercisesState(fn),
     }),
-    [session, authReady, profile, days, exercises, planReady, lang, setLang, setAccent, setDisplayName, reloadPlan],
+    [session, authReady, profile, plans, activePlan, days, exercises, planReady, lang, setLang, setAccent, setDisplayName, reloadPlan, setActivePlan],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

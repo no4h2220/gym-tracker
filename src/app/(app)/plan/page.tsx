@@ -7,13 +7,14 @@ import {
   DndContext,
   KeyboardSensor,
   PointerSensor,
+  DragOverlay,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core"
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
-import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers"
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
 import { CSS } from "@dnd-kit/utilities"
 import { useApp } from "@/components/app-provider"
 import { Button } from "@/components/ui/button"
@@ -24,9 +25,13 @@ import {
   addDay,
   addPlanItem,
   createExercise,
+  createPlan,
   deleteDay,
+  deletePlan,
+  duplicatePlan,
   isoWeekday,
   removePlanItem,
+  renamePlan,
   reorderPlanItems,
   updateDay,
   updateExercise,
@@ -54,9 +59,11 @@ function PlusIcon() {
 }
 
 export default function PlanPage() {
-  const { days, exercises, setDays, setExercises, reloadPlan, t, planReady } = useApp()
+  const { plans, activePlan, exercises, setPlans, setExercises, setActivePlan, reloadPlan, t, planReady } = useApp()
   const reduce = useReducedMotion()
-  const sorted = useMemo(() => [...days].sort((a, b) => a.weekday - b.weekday), [days])
+  const [planId, setPlanId] = useState<string | null>(null)
+  const plan = plans.find((p) => p.id === planId) ?? activePlan ?? plans[0] ?? null
+  const sorted = useMemo(() => [...(plan?.days ?? [])].sort((a, b) => a.weekday - b.weekday), [plan])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const day = sorted.find((d) => d.id === selectedId) ?? sorted.find((d) => d.weekday === isoWeekday()) ?? sorted[0] ?? null
   const exById = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises])
@@ -64,23 +71,26 @@ export default function PlanPage() {
   const [editItem, setEditItem] = useState<PlanItem | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [dayEdit, setDayEdit] = useState<PlanDay | "new" | null>(null)
+  const [plansOpen, setPlansOpen] = useState(false)
+  const [dragId, setDragId] = useState<string | null>(null)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
   function patchDay(dayId: string, fn: (d: PlanDay) => PlanDay) {
-    setDays((ds) => ds.map((d) => (d.id === dayId ? fn(d) : d)))
+    setPlans((ps) => ps.map((p) => ({ ...p, days: p.days.map((d) => (d.id === dayId ? fn(d) : d)) })))
   }
 
   async function onDragEnd(e: DragEndEvent) {
+    setDragId(null)
     if (!day || !e.over || e.active.id === e.over.id) return
     const oldIdx = day.items.findIndex((i) => i.id === e.active.id)
     const newIdx = day.items.findIndex((i) => i.id === e.over!.id)
     const items = arrayMove(day.items, oldIdx, newIdx).map((it, i) => ({ ...it, position: i + 1 }))
     patchDay(day.id, (d) => ({ ...d, items }))
-    navigator.vibrate?.(8)
+    navigator.vibrate?.(10)
     try {
       await reorderPlanItems(day.id, items.map((i) => i.id))
     } catch {
@@ -89,54 +99,81 @@ export default function PlanPage() {
     }
   }
 
+  const dragItem = day?.items.find((i) => i.id === dragId) ?? null
+  const isActive = !!plan && plan.id === activePlan?.id
+
   if (!planReady) return <p className="num text-sm text-muted-foreground">{t.loading}</p>
 
   return (
     <div className="flex flex-col gap-5">
       <h1 className="anim-rise font-wide text-[30px] font-black tracking-tight uppercase">{t.planTitle}</h1>
 
-      <nav aria-label={t.weekday} className="anim-rise -mx-5 flex gap-2 overflow-x-auto px-5 pb-1" style={{ "--i": 1 } as React.CSSProperties}>
-        {sorted.map((d) => {
-          const on = day?.id === d.id
-          return (
+      <button
+        type="button"
+        onClick={() => setPlansOpen(true)}
+        aria-haspopup="dialog"
+        className="anim-rise -mt-1 flex h-[52px] items-center justify-between gap-3 rounded-2xl bg-card px-4 text-left transition-transform active:scale-[.98]"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="truncate text-[17px] font-bold">{plan?.name ?? t.newPlan}</span>
+          {isActive && <span className="num shrink-0 rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground uppercase">{t.activePlan}</span>}
+        </span>
+        <span className="num shrink-0 text-xs text-muted-foreground">
+          {plans.length > 1 ? t.plansCount(plans.length) : t.morePlans}
+        </span>
+      </button>
+
+      {plan && !isActive && (
+        <Button variant="secondary" onClick={() => setActivePlan(plan.id)} className="-mt-2">
+          {t.useThisPlan}
+        </Button>
+      )}
+
+      {plan && (
+        <nav aria-label={t.weekday} className="anim-rise -mx-5 flex gap-2 overflow-x-auto px-5 pb-1" style={{ "--i": 2 } as React.CSSProperties}>
+          {sorted.map((d) => {
+            const on = day?.id === d.id
+            return (
+              <button
+                key={d.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setSelectedId(d.id)}
+                className={cn(
+                  "relative flex h-14 shrink-0 flex-col items-start justify-center rounded-2xl px-4 text-left transition-colors duration-200",
+                  on ? "text-primary-foreground" : "bg-card text-foreground",
+                )}
+              >
+                {on && (
+                  <motion.span
+                    layoutId="plan-day-rail"
+                    className="absolute inset-0 rounded-2xl bg-primary"
+                    transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 40 }}
+                    aria-hidden="true"
+                  />
+                )}
+                <span className={cn("num relative text-[11px]", on ? "opacity-70" : "text-muted-foreground")}>{t.weekdaysShort[d.weekday - 1]}</span>
+                <span className="relative text-sm font-bold">{d.label}</span>
+              </button>
+            )
+          })}
+          {sorted.length < 7 && (
             <button
-              key={d.id}
               type="button"
-              aria-pressed={on}
-              onClick={() => setSelectedId(d.id)}
-              className={cn(
-                "relative flex h-14 shrink-0 flex-col items-start justify-center rounded-2xl px-4 text-left transition-colors duration-200",
-                on ? "text-primary-foreground" : "bg-card text-foreground",
-              )}
+              onClick={() => setDayEdit("new")}
+              aria-label={t.addDay}
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-dashed border-line-2 text-muted-foreground"
             >
-              {on && (
-                <motion.span
-                  layoutId="plan-day-rail"
-                  className="absolute inset-0 rounded-2xl bg-primary"
-                  transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 40 }}
-                  aria-hidden="true"
-                />
-              )}
-              <span className={cn("num relative text-[11px]", on ? "opacity-70" : "text-muted-foreground")}>{t.weekdaysShort[d.weekday - 1]}</span>
-              <span className="relative text-sm font-bold">{d.label}</span>
+              <PlusIcon />
             </button>
-          )
-        })}
-        {sorted.length < 7 && (
-          <button
-            type="button"
-            onClick={() => setDayEdit("new")}
-            aria-label={t.addDay}
-            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-dashed border-line-2 text-muted-foreground"
-          >
-            <PlusIcon />
-          </button>
-        )}
-      </nav>
+          )}
+        </nav>
+      )}
 
       {day && (
         <>
-          <div className="anim-rise flex items-end justify-between gap-3" style={{ "--i": 2 } as React.CSSProperties}>
+          <div className="anim-rise flex items-end justify-between gap-3" style={{ "--i": 3 } as React.CSSProperties}>
             <div className="min-w-0">
               <h2 className="truncate text-2xl font-extrabold">{day.label}</h2>
               {day.focus && <p className="truncate text-sm text-muted-foreground">{day.focus}</p>}
@@ -148,7 +185,18 @@ export default function PlanPage() {
 
           <p className="text-xs text-muted-foreground">{t.dragHint}</p>
 
-          <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis, restrictToParentElement]} onDragEnd={onDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragStart={(e) => {
+              setDragId(String(e.active.id))
+              navigator.vibrate?.(8)
+            }}
+            onDragOver={() => navigator.vibrate?.(4)}
+            onDragCancel={() => setDragId(null)}
+            onDragEnd={onDragEnd}
+          >
             <SortableContext items={day.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
               <ul className="flex flex-col gap-2">
                 {day.items.map((it, idx) => (
@@ -156,6 +204,9 @@ export default function PlanPage() {
                 ))}
               </ul>
             </SortableContext>
+            <DragOverlay dropAnimation={reduce ? null : { duration: 220, easing: "cubic-bezier(.2,.8,.2,1)" }}>
+              {dragItem ? <RowCard item={dragItem} exercise={exById.get(dragItem.exercise_id)} lifted /> : null}
+            </DragOverlay>
           </DndContext>
 
           <Button variant="outline" size="lg" className="border-dashed border-line-2 bg-transparent" onClick={() => setAddOpen(true)}>
@@ -189,15 +240,52 @@ export default function PlanPage() {
         />
       )}
 
-      <DaySheet
-        value={dayEdit}
-        usedWeekdays={sorted.map((d) => d.weekday)}
-        onClose={() => setDayEdit(null)}
-        onChanged={async (selectId) => {
-          await reloadPlan()
-          if (selectId !== undefined) setSelectedId(selectId)
+      {plan && (
+        <DaySheet
+          value={dayEdit}
+          planId={plan.id}
+          usedWeekdays={sorted.map((d) => d.weekday)}
+          onClose={() => setDayEdit(null)}
+          onChanged={async (selectId) => {
+            await reloadPlan()
+            if (selectId !== undefined) setSelectedId(selectId)
+          }}
+        />
+      )}
+
+      <PlansSheet
+        open={plansOpen}
+        onClose={() => setPlansOpen(false)}
+        current={plan?.id ?? null}
+        onPick={(id) => {
+          setPlanId(id)
+          setSelectedId(null)
         }}
       />
+    </div>
+  )
+}
+
+function RowCard({ item, exercise, lifted, handle }: { item: PlanItem; exercise?: Exercise; lifted?: boolean; handle?: React.ReactNode }) {
+  const name = exercise?.name ?? "?"
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1 rounded-2xl bg-card pr-1",
+        lifted && "scale-[1.03] bg-surface-hi shadow-[0_18px_40px_rgba(0,0,0,.6),0_0_0_1.5px_var(--primary)]",
+      )}
+    >
+      {handle ?? (
+        <span className="flex size-12 shrink-0 items-center justify-center text-primary" aria-hidden="true">
+          <GripIcon />
+        </span>
+      )}
+      <span className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 py-3 pr-3">
+        <span className="min-w-0 truncate text-[15px] font-semibold">{name}</span>
+        <span className="num shrink-0 text-xs text-muted-foreground">
+          {item.sets} × {item.reps_min}–{item.reps_max}
+        </span>
+      </span>
     </div>
   )
 }
@@ -207,31 +295,216 @@ function SortableRow({ item, index, exercise, onOpen }: { item: PlanItem; index:
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
   const name = exercise?.name ?? "?"
   return (
-    <li
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, "--i": index + 3 } as React.CSSProperties}
-      className={cn(
-        "anim-rise flex items-center gap-1 rounded-2xl bg-card pr-1 transition-shadow",
-        isDragging && "relative z-10 scale-[1.03] shadow-[0_16px_40px_rgba(0,0,0,.55),0_0_0_1.5px_var(--primary)]",
-      )}
-    >
-      <button
-        ref={setActivatorNodeRef}
-        type="button"
-        {...attributes}
-        {...listeners}
-        aria-label={t.dragHandle(name)}
-        className="flex size-12 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground active:cursor-grabbing"
-      >
-        <GripIcon />
-      </button>
-      <button type="button" onClick={onOpen} className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 py-3 pr-3 text-left">
-        <span className="min-w-0 truncate text-[15px] font-semibold">{name}</span>
-        <span className="num shrink-0 text-xs text-muted-foreground">
-          {item.sets} × {item.reps_min}–{item.reps_max}
-        </span>
-      </button>
+    // the entrance animation sits on an inner element: a CSS animation on the sortable
+    // element itself would override dnd-kit's transform and freeze the other rows
+    <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className="relative">
+      <div className="anim-rise" style={{ "--i": index + 4 } as React.CSSProperties}>
+        {isDragging ? (
+          // drop target: where the exercise will land
+          <div className="flex min-h-14 items-center rounded-2xl border-[1.5px] border-dashed border-primary bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] px-4" aria-hidden="true">
+            <span className="truncate text-[15px] font-semibold text-primary/70">{name}</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 rounded-2xl bg-card pr-1">
+            <button
+              ref={setActivatorNodeRef}
+              type="button"
+              {...attributes}
+              {...listeners}
+              aria-label={t.dragHandle(name)}
+              className="flex size-12 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground active:cursor-grabbing"
+            >
+              <GripIcon />
+            </button>
+            <button type="button" onClick={onOpen} className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 py-3 pr-3 text-left">
+              <span className="min-w-0 truncate text-[15px] font-semibold">{name}</span>
+              <span className="num shrink-0 text-xs text-muted-foreground">
+                {item.sets} × {item.reps_min}–{item.reps_max}
+              </span>
+            </button>
+          </div>
+        )}
+      </div>
     </li>
+  )
+}
+
+function PlansSheet({ open, onClose, current, onPick }: { open: boolean; onClose: () => void; current: string | null; onPick: (id: string) => void }) {
+  const { plans, activePlan, setActivePlan, reloadPlan, t } = useApp()
+  const [mode, setMode] = useState<"list" | "new" | "rename">("list")
+  const [name, setName] = useState("")
+  const [copy, setCopy] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const cur = plans.find((p) => p.id === current) ?? null
+
+  function reset() {
+    setMode("list")
+    setName("")
+    setCopy(true)
+    setConfirmDelete(false)
+  }
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true)
+    try {
+      await fn()
+    } catch {
+      toast.error(t.error)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) {
+          reset()
+          onClose()
+        }
+      }}
+    >
+      <SheetContent side="bottom" className="gap-0">
+        <SheetHeader className="px-5 pt-5">
+          <SheetTitle className="text-xl font-extrabold">{mode === "new" ? t.newPlan : mode === "rename" ? t.renamePlan : t.plans}</SheetTitle>
+          <SheetDescription className="sr-only">{t.plans}</SheetDescription>
+        </SheetHeader>
+
+        {mode === "list" && (
+          <div className="flex flex-col gap-3 px-5 pb-6">
+            <ul className="flex flex-col gap-1.5">
+              {plans.map((p) => {
+                const on = p.id === current
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onPick(p.id)
+                        reset()
+                        onClose()
+                      }}
+                      aria-current={on}
+                      className={cn(
+                        "flex min-h-14 w-full items-center justify-between gap-3 rounded-xl px-4 text-left transition-transform active:scale-[.98]",
+                        on ? "bg-surface-hi shadow-[inset_0_0_0_1.5px_var(--primary)]" : "bg-background",
+                      )}
+                    >
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate text-[15px] font-semibold">{p.name}</span>
+                        <span className="num text-[11px] text-muted-foreground">{p.days.map((d) => t.weekdaysShort[d.weekday - 1]).join(" · ") || "–"}</span>
+                      </span>
+                      {p.id === activePlan?.id && (
+                        <span className="num shrink-0 rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground uppercase">{t.activePlan}</span>
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <Button size="lg" onClick={() => setMode("new")}>
+              <PlusIcon />
+              {t.newPlan}
+            </Button>
+            {cur && (
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setName(cur.name)
+                    setMode("rename")
+                  }}
+                >
+                  {t.renamePlan}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="text-destructive"
+                  disabled={busy || plans.length < 2}
+                  onClick={() => {
+                    if (!confirmDelete) return setConfirmDelete(true)
+                    run(async () => {
+                      const next = plans.find((p) => p.id !== cur.id)!
+                      if (cur.id === activePlan?.id) setActivePlan(next.id)
+                      await deletePlan(cur.id)
+                      await reloadPlan()
+                      onPick(next.id)
+                      reset()
+                      onClose()
+                    })
+                  }}
+                >
+                  {confirmDelete ? `${t.deletePlan}?` : t.deletePlan}
+                </Button>
+              </div>
+            )}
+            {confirmDelete && (
+              <p className="text-sm text-muted-foreground" role="alert">
+                {t.deletePlanConfirm}
+              </p>
+            )}
+          </div>
+        )}
+
+        {mode !== "list" && (
+          <form
+            className="flex flex-col gap-4 px-5 pb-6"
+            onSubmit={(e) => {
+              e.preventDefault()
+              const n = name.trim()
+              if (!n) return
+              run(async () => {
+                if (mode === "rename" && cur) {
+                  await renamePlan(cur.id, n)
+                  await reloadPlan()
+                } else {
+                  const id = copy && cur ? await duplicatePlan(cur.id, n) : await createPlan(n)
+                  await reloadPlan()
+                  onPick(id)
+                }
+                reset()
+                onClose()
+              })
+            }}
+          >
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="plan-name">{t.planName}</Label>
+              <Input id="plan-name" value={name} maxLength={40} placeholder="Push / Pull / Legs…" onChange={(e) => setName(e.target.value)} />
+            </div>
+            {mode === "new" && cur && (
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.newPlan}>
+                {[
+                  [true, t.copyOf(cur.name)],
+                  [false, t.emptyPlan],
+                ].map(([v, label]) => (
+                  <button
+                    key={String(v)}
+                    type="button"
+                    role="radio"
+                    aria-checked={copy === v}
+                    onClick={() => setCopy(v as boolean)}
+                    className={cn(
+                      "min-h-12 rounded-xl px-3 text-sm font-semibold transition-colors",
+                      copy === v ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground",
+                    )}
+                  >
+                    {label as string}
+                  </button>
+                ))}
+              </div>
+            )}
+            <Button type="submit" size="lg" disabled={busy || !name.trim()}>
+              {t.save}
+            </Button>
+            <Button type="button" variant="ghost" onClick={reset}>
+              {t.cancel}
+            </Button>
+          </form>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -447,11 +720,13 @@ function AddSheet({
 
 function DaySheet({
   value,
+  planId,
   usedWeekdays,
   onClose,
   onChanged,
 }: {
   value: PlanDay | "new" | null
+  planId: string
   usedWeekdays: number[]
   onClose: () => void
   onChanged: (selectId?: string | null) => Promise<void>
@@ -471,7 +746,7 @@ function DaySheet({
     if (!label) return
     setBusy(true)
     try {
-      if (isNew) await addDay(cur.weekday, label, cur.focus.trim() || null)
+      if (isNew) await addDay(planId, cur.weekday, label, cur.focus.trim() || null)
       else if (base) await updateDay(base.id, { label, focus: cur.focus.trim() || null, weekday: cur.weekday })
       await onChanged()
       setDraft(null)

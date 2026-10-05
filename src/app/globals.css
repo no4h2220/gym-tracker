@@ -105,7 +105,7 @@
   font-stretch: 72%;
 }
 @utility pb-safe-nav {
-  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
 }
 
 /* Motion — only transform / opacity / stroke offsets */
@@ -117,15 +117,16 @@
 @keyframes ping-ring { 0% { transform: scale(1); opacity: .7 } 100% { transform: scale(3); opacity: 0 } }
 @keyframes wobble { 0% { transform: rotate(-12deg) scale(0) } 70% { transform: rotate(4deg) scale(1.15) } 100% { transform: none } }
 @keyframes glow {
-  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-hex) 55%, transparent), 0 18px 50px -14px color-mix(in srgb, var(--accent-hex) 30%, transparent) }
-  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-hex) 85%, transparent), 0 18px 60px -10px color-mix(in srgb, var(--accent-hex) 45%, transparent) }
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-hex) 45%, transparent), 0 12px 32px -18px color-mix(in srgb, var(--accent-hex) 22%, transparent) }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-hex) 60%, transparent), 0 12px 36px -16px color-mix(in srgb, var(--accent-hex) 30%, transparent) }
 }
+
 @keyframes blink { 50% { opacity: 0 } }
 
 .anim-rise { animation: rise .45s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i, 0) * 60ms) }
 .anim-pop { animation: pop .45s cubic-bezier(.2,.9,.3,1.4) both }
 .anim-wobble { display: inline-block; animation: wobble .55s .6s cubic-bezier(.2,.9,.3,1.4) both }
-.anim-glow { animation: glow 3s 1s ease-in-out infinite }
+.anim-glow { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-hex) 45%, transparent); animation: glow 4s ease-in-out infinite }
 .anim-draw { stroke-dasharray: var(--len, 1200); animation: draw 1.2s .15s cubic-bezier(.4,0,.2,1) both }
 .anim-fade-late { animation: fade .7s .9s both }
 .anim-grow { transform-box: fill-box; transform-origin: bottom; animation: grow .5s cubic-bezier(.2,.9,.3,1.3) both }

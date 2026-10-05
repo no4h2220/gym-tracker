@@ -1,7 +1,7 @@
 "use client"
 
 import { supabase } from "./supabase"
-import type { Exercise, ExerciseSession, PlanDay, PlanItem, Profile } from "./types"
+import type { Exercise, ExerciseSession, Plan, PlanDay, PlanItem, Profile } from "./types"
 
 export function todayStr(d = new Date()): string {
   const y = d.getFullYear()
@@ -23,13 +23,15 @@ function check<T>(res: { data: T; error: { message: string } | null }): T {
 
 // ───────── profile ─────────
 
+const PROFILE_COLS = "id, display_name, accent, lang, active_plan_id"
+
 export async function loadProfile(uid: string): Promise<Profile> {
   const sb = supabase()
-  const res = await sb.from("profiles").select("id, display_name, accent, lang").eq("id", uid).maybeSingle()
+  const res = await sb.from("profiles").select(PROFILE_COLS).eq("id", uid).maybeSingle()
   if (res.error) throw new Error(res.error.message)
   if (res.data) return res.data as Profile
   // profile row is created by a trigger at sign-up; recreate if it is missing
-  const created = await sb.from("profiles").insert({ id: uid }).select("id, display_name, accent, lang").single()
+  const created = await sb.from("profiles").insert({ id: uid }).select(PROFILE_COLS).single()
   return check(created) as Profile
 }
 
@@ -41,20 +43,48 @@ export async function updateProfile(uid: string, patch: Partial<Omit<Profile, "i
 
 const ITEM_COLS = "id, day_id, exercise_id, position, sets, reps_min, reps_max, rest_seconds, rest_max_seconds"
 
-export async function loadPlan(): Promise<{ days: PlanDay[]; exercises: Exercise[] }> {
+export async function loadPlan(): Promise<{ plans: Plan[]; exercises: Exercise[] }> {
   const sb = supabase()
-  const [daysRes, exRes] = await Promise.all([
-    sb.from("plan_days").select(`id, weekday, label, focus, plan_items(${ITEM_COLS})`).order("weekday"),
+  const [plansRes, exRes] = await Promise.all([
+    sb
+      .from("plans")
+      .select(`id, name, created_at, plan_days(id, plan_id, weekday, label, focus, plan_items(${ITEM_COLS}))`)
+      .order("created_at"),
     sb.from("exercises").select("id, name, notes, archived").order("name"),
   ])
-  const days = (check(daysRes) as unknown as (Omit<PlanDay, "items"> & { plan_items: PlanItem[] })[]).map((d) => ({
-    id: d.id,
-    weekday: d.weekday,
-    label: d.label,
-    focus: d.focus,
-    items: [...d.plan_items].sort((a, b) => a.position - b.position),
+  type RawDay = Omit<PlanDay, "items"> & { plan_items: PlanItem[] }
+  const plans = (check(plansRes) as unknown as { id: string; name: string; plan_days: RawDay[] }[]).map((p) => ({
+    id: p.id,
+    name: p.name,
+    days: p.plan_days
+      .map((d) => ({
+        id: d.id,
+        plan_id: d.plan_id,
+        weekday: d.weekday,
+        label: d.label,
+        focus: d.focus,
+        items: [...d.plan_items].sort((a, b) => a.position - b.position),
+      }))
+      .sort((a, b) => a.weekday - b.weekday),
   }))
-  return { days, exercises: check(exRes) as Exercise[] }
+  return { plans, exercises: check(exRes) as Exercise[] }
+}
+
+export async function createPlan(name: string): Promise<string> {
+  const res = await supabase().from("plans").insert({ name: name.trim() }).select("id").single()
+  return (check(res) as { id: string }).id
+}
+
+export async function duplicatePlan(planId: string, name: string): Promise<string> {
+  return check(await supabase().rpc("duplicate_plan", { p_plan: planId, p_name: name.trim() })) as string
+}
+
+export async function renamePlan(planId: string, name: string) {
+  check(await supabase().from("plans").update({ name: name.trim() }).eq("id", planId))
+}
+
+export async function deletePlan(planId: string) {
+  check(await supabase().from("plans").delete().eq("id", planId))
 }
 
 export async function createExercise(name: string): Promise<Exercise> {
@@ -94,8 +124,8 @@ export async function reorderPlanItems(dayId: string, ids: string[]) {
   check(await supabase().rpc("reorder_plan_items", { p_day: dayId, p_ids: ids }))
 }
 
-export async function addDay(weekday: number, label: string, focus: string | null) {
-  check(await supabase().from("plan_days").insert({ weekday, label, focus }))
+export async function addDay(planId: string, weekday: number, label: string, focus: string | null) {
+  check(await supabase().from("plan_days").insert({ plan_id: planId, weekday, label, focus }))
 }
 
 export async function updateDay(id: string, patch: Partial<Pick<PlanDay, "label" | "focus" | "weekday">>) {

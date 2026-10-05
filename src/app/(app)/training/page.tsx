@@ -63,6 +63,12 @@ export default function TrainingPage() {
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const loading = loadedKey !== loadKey
   const sessionIdRef = useRef<string | null>(null)
+  // staggered entrance only on first paint; afterwards rows must react instantly
+  const [intro, setIntro] = useState(true)
+  useEffect(() => {
+    const id = setTimeout(() => setIntro(false), 900)
+    return () => clearTimeout(id)
+  }, [])
 
   useEffect(() => {
     if (!planReady) return
@@ -225,10 +231,11 @@ export default function TrainingPage() {
             return (
               <motion.button
                 layout={!reduce ? "position" : false}
+                transition={{ layout: { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] } }}
                 key={it.id}
                 type="button"
                 onClick={() => setExpanded(it.exercise_id)}
-                className="anim-rise flex min-h-14 items-center gap-3 rounded-2xl bg-card px-4 py-3.5 text-left transition-transform active:scale-[.98]"
+                className={cn(intro && "anim-rise", "flex min-h-14 items-center gap-3 rounded-2xl bg-card px-4 py-3.5 text-left transition-transform active:scale-[.98]")}
                 style={{ "--i": idx + 2 } as React.CSSProperties}
                 aria-expanded={false}
               >
@@ -307,9 +314,9 @@ function ActiveCard({
   return (
     <motion.article
       layout={!reduce ? "position" : false}
-      initial={reduce ? false : { opacity: 0, scale: 0.98, y: 8 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+      initial={reduce ? false : { opacity: 0.6 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.12, ease: "easeOut", layout: { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] } }}
       className="anim-glow flex flex-col gap-3.5 rounded-3xl bg-surface-hi px-4 pt-[18px] pb-4"
     >
       <div className="flex flex-col gap-2">
