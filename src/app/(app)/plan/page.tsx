@@ -33,7 +33,6 @@ import {
   removePlanItem,
   renamePlan,
   reorderPlanItems,
-  takeWeekday,
   updateDay,
   updateExercise,
   updatePlanItem,
@@ -795,14 +794,9 @@ function DaySheet({
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState(false)
 
-  // weekdays that currently belong to another day and will be moved to this one
-  const takeovers = cur.weekdays.filter((w) => {
-    const o = ownerOf(w)
-    return o && o.id !== base?.id
-  })
-  const merged = [...new Set(takeovers.map((w) => ownerOf(w)!).filter((o) => o.weekdays.every((w) => cur.weekdays.includes(w))).map((o) => o.label))]
-
   function toggle(w: number) {
+    const o = ownerOf(w)
+    if (o && o.id !== base?.id) return
     const has = cur.weekdays.includes(w)
     if (has && cur.weekdays.length === 1) return
     setDraft({ ...cur, weekdays: has ? cur.weekdays.filter((x) => x !== w) : [...cur.weekdays, w].sort((a, b) => a - b) })
@@ -814,21 +808,11 @@ function DaySheet({
     setBusy(true)
     try {
       const focus = cur.focus.trim() || null
-      const own = cur.weekdays.filter((w) => !takeovers.includes(w))
       if (isNew) {
-        const id = await addDay(planId, own, label, focus)
+        const id = await addDay(planId, cur.weekdays, label, focus)
         await onChanged(id)
       } else if (base) {
-        const local = days.map((d) => ({ ...d, weekdays: [...d.weekdays] }))
-        // 1. keep only this day's own picks (if none are left, keep the old ones for now)
-        const first = own.length ? own : base.weekdays
-        await updateDay(base.id, { label, focus, weekdays: first })
-        local.find((d) => d.id === base.id)!.weekdays = first
-        // 2. take weekdays from other days (merging a day that loses its last weekday)
-        for (const w of takeovers) await takeWeekday(local, base.id, w)
-        // 3. final set, e.g. when only foreign weekdays were picked
-        const now = local.find((d) => d.id === base.id)!.weekdays
-        if (now.join() !== cur.weekdays.join()) await updateDay(base.id, { weekdays: cur.weekdays })
+        await updateDay(base.id, { label, focus, weekdays: cur.weekdays })
         await onChanged(base.id)
       }
       setDraft(null)
@@ -894,28 +878,30 @@ function DaySheet({
               {[1, 2, 3, 4, 5, 6, 7].map((w) => {
                 const on = cur.weekdays.includes(w)
                 const owner = ownerOf(w)
-                const foreign = owner && owner.id !== base?.id
+                const taken = !!owner && owner.id !== base?.id
                 return (
                   <button
                     key={w}
                     type="button"
                     aria-pressed={on}
-                    disabled={isNew && !!foreign}
+                    disabled={taken}
+                    aria-label={taken ? `${t.weekdaysLong[w - 1]}: ${owner!.label}` : t.weekdaysLong[w - 1]}
                     onClick={() => toggle(w)}
                     className={cn(
-                      "flex h-12 flex-col items-center justify-center rounded-xl text-xs font-bold transition-colors disabled:opacity-30",
-                      on ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground",
+                      "flex h-12 flex-col items-center justify-center rounded-xl text-xs font-bold transition-colors",
+                      on ? "bg-primary text-primary-foreground" : "bg-background",
+                      taken ? "text-muted-foreground/50" : !on && "text-foreground",
                     )}
                   >
                     {t.weekdaysShort[w - 1]}
-                    {foreign && !on && <span className="max-w-full truncate px-0.5 text-[9px] font-medium opacity-70">{owner.label}</span>}
+                    {taken && <span className="max-w-full truncate px-0.5 text-[9px] font-medium">{owner!.label}</span>}
                   </button>
                 )
               })}
             </div>
-            {takeovers.length > 0 && (
+            {cur.weekdays.length > 1 && (
               <p className="text-xs text-primary" role="status">
-                {t.takeoverNote(takeovers.map((w) => t.weekdaysShort[w - 1]).join(", "), merged)}
+                {t.linkedNote(cur.weekdays.map((w) => t.weekdaysShort[w - 1]).join(" + "))}
               </p>
             )}
           </fieldset>

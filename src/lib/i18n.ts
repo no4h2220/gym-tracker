@@ -42,11 +42,8 @@ const de = {
   dayFocus: "Fokus",
   weekday: "Wochentag",
   weekdaysPick: "Wochentage",
-  weekdaysHint: "Mehrere wählen, wenn du diesen Tag mehrmals pro Woche trainierst – Änderungen gelten dann für alle.",
-  takeoverNote: (days: string, merged: string[]) =>
-    merged.length
-      ? `${days} wird mit diesem Tag verknüpft. Der bisherige ${days}-Tag „${merged.join("“, „")}“ wird ersetzt – es gelten die Übungen von hier, deine bisherigen Trainings bleiben erhalten.`
-      : `${days} wird von einem anderen Tag übernommen.`,
+  weekdaysHint: "Tippe alle Wochentage an, an denen du diesen Tag trainierst. Ausgegraute Tage gehören schon zu einem anderen Tag.",
+  linkedNote: (days: string) => `${days} sind verknüpft: Übungen und Reihenfolge gelten für alle.`,
   deleteDay: "Tag löschen",
   deleteDayConfirm: "Tag wirklich löschen? Die Übungen bleiben mit ihrem Verlauf erhalten.",
   exerciseName: "Übungsname",
@@ -182,11 +179,8 @@ const en: Dict = {
   dayFocus: "Focus",
   weekday: "Weekday",
   weekdaysPick: "Weekdays",
-  weekdaysHint: "Pick several if you train this day more than once a week – changes then apply to all.",
-  takeoverNote: (days, merged) =>
-    merged.length
-      ? `${days} gets linked to this day. The current ${days} day "${merged.join('", "')}" is replaced – this day's exercises apply, past workouts are kept.`
-      : `${days} will be taken from another day.`,
+  weekdaysHint: "Tap every weekday you train this day on. Greyed-out days already belong to another day.",
+  linkedNote: (days) => `${days} are linked: exercises and order apply to all.`,
   deleteDay: "Delete day",
   deleteDayConfirm: "Delete this day? Exercises and their history are kept.",
   exerciseName: "Exercise name",

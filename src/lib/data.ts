@@ -137,30 +137,6 @@ export async function updateDay(id: string, patch: Partial<Pick<PlanDay, "label"
   check(await supabase().from("plan_days").update(patch).eq("id", id))
 }
 
-/**
- * Give a weekday to a day. If another day of the same plan had that weekday, it loses it;
- * when that was its only weekday, the other day is merged in: its past workouts are moved
- * to this day and the other day is removed.
- */
-export async function takeWeekday(days: PlanDay[], dayId: string, weekday: number) {
-  const sb = supabase()
-  const target = days.find((d) => d.id === dayId)
-  if (!target || target.weekdays.includes(weekday)) return
-  const other = days.find((d) => d.id !== dayId && d.weekdays.includes(weekday))
-  if (other) {
-    if (other.weekdays.length > 1) {
-      check(await sb.from("plan_days").update({ weekdays: other.weekdays.filter((w) => w !== weekday) }).eq("id", other.id))
-    } else {
-      check(await sb.from("sessions").update({ day_id: dayId }).eq("day_id", other.id))
-      check(await sb.from("plan_days").delete().eq("id", other.id))
-    }
-  }
-  const next = [...target.weekdays, weekday].sort((a, b) => a - b)
-  check(await sb.from("plan_days").update({ weekdays: next }).eq("id", dayId))
-  target.weekdays = next
-  if (other) other.weekdays = other.weekdays.filter((w) => w !== weekday)
-}
-
 export async function deleteDay(id: string) {
   check(await supabase().from("plan_days").delete().eq("id", id))
 }

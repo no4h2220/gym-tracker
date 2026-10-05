@@ -104,10 +104,11 @@ function SheetContent({
   const docked: React.CSSProperties | undefined =
     side === "bottom" && typing
       ? {
-          top: "calc(env(safe-area-inset-top) + 8px)",
+          // never under the status bar / Dynamic Island, even if iOS reports no safe area
+          top: "calc(max(env(safe-area-inset-top), 54px) + 10px)",
           bottom: "auto",
           borderRadius: 24,
-          maxHeight: visible ? `calc(${visible}px - env(safe-area-inset-top) - 16px)` : "60dvh",
+          maxHeight: visible ? `calc(${visible}px - max(env(safe-area-inset-top), 54px) - 20px)` : "55dvh",
           paddingBottom: 0,
         }
       : undefined
