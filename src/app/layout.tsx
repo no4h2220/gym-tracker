@@ -35,7 +35,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <AppProvider>
           {children}
-          <Toaster position="top-center" offset={16} />
+          <Toaster
+            position="top-center"
+            offset={{ top: "calc(env(safe-area-inset-top) + 12px)" }}
+            mobileOffset={{ top: "calc(env(safe-area-inset-top) + 12px)", left: 16, right: 16 }}
+          />
         </AppProvider>
         <ServiceWorker />
       </body>

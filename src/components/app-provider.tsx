@@ -97,7 +97,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setDaysState(p.days)
         setExercisesState(p.exercises)
       })
-      .catch(() => {})
+      .catch((e: unknown) => {
+        if (!alive) return
+        toast.error(DICTS[initialLang()].error, { description: e instanceof Error ? e.message : String(e) })
+      })
       .finally(() => alive && setPlanReady(true))
     return () => {
       alive = false
