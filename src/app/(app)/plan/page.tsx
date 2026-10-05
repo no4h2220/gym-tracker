@@ -741,10 +741,11 @@ function AddSheet({
               <PlusIcon />
             </Button>
           </div>
-          {candidates.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <span className="num text-[11px] tracking-[.06em] text-muted-foreground uppercase">{t.existingExercises}</span>
-              <ul className="flex max-h-[40dvh] flex-col gap-1.5 overflow-y-auto overscroll-contain">
+          {/* fixed height: the sheet keeps its size while the list filters */}
+          <div className="flex h-[34dvh] flex-col gap-2">
+            <span className="num text-[11px] tracking-[.06em] text-muted-foreground uppercase">{t.existingExercises}</span>
+            {candidates.length > 0 ? (
+              <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain">
                 {candidates.map((e) => (
                   <li key={e.id}>
                     <button
@@ -759,8 +760,10 @@ function AddSheet({
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
+            ) : (
+              <p className="text-sm text-muted-foreground">{name.trim() ? t.createHint(name.trim()) : "–"}</p>
+            )}
+          </div>
         </form>
       </SheetContent>
     </Sheet>

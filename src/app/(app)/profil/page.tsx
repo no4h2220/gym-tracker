@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import { toast } from "sonner"
 import { useApp } from "@/components/app-provider"
-import { DisplayInfo } from "@/components/display-info"
 import { CheckIcon, ChevronRight } from "@/components/icons"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -176,8 +175,6 @@ export default function ProfilPage() {
           {t.logout}
         </button>
       </section>
-
-      <DisplayInfo />
 
       <ImportSheet open={importOpen} onOpenChange={setImportOpen} />
     </div>

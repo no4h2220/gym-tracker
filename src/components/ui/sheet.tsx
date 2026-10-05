@@ -46,49 +46,99 @@ function SheetOverlay({
 /**
  * Bottom sheets and the on-screen keyboard.
  *
- * While a text field inside the sheet is focused, the sheet docks to the top of the
- * *visible* area: iOS pans the page up when the keyboard opens, so the position follows
- * the visual viewport (offsetTop) and adds the safe area, which keeps it clear of the
- * status bar / Dynamic Island on every device. Its height is capped to the space above
- * the keyboard (or half the screen when iOS doesn't report the keyboard).
+ * The sheet always stays anchored to the bottom and is lifted with the CSS `translate`
+ * property, so every change is one smooth GPU animation (opening the keyboard, closing it,
+ * the list getting shorter while typing):
+ * - keyboard reported by the visual viewport → the sheet's bottom sits just above it
+ *   (this also covers iOS panning the page up while the keyboard is open);
+ * - a field is focused but iOS reports no keyboard → the sheet moves up under the status bar,
+ *   capped to half the screen, so the keyboard can't cover it;
+ * - otherwise → resting position at the bottom.
  */
-function useTyping(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean) {
+function useKeyboardLift(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean) {
   const [typing, setTyping] = React.useState(false)
-  const [vp, setVp] = React.useState<{ top: number; height: number; full: number }>({ top: 0, height: 0, full: 0 })
+  const [vp, setVp] = React.useState({ top: 0, height: 0, full: 0, safeTop: 0 })
+  const [h, setH] = React.useState(0)
+
   React.useEffect(() => {
     if (!enabled) return
     const inside = (n: EventTarget | null) => n instanceof Node && !!ref.current?.contains(n)
     const isField = (t: EventTarget | null) =>
       t instanceof HTMLElement && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !/^(checkbox|radio|file|button|submit)$/.test((t as HTMLInputElement).type)))
     const onIn = (e: FocusEvent) => {
-      if (!isField(e.target) || !inside(e.target)) return
-      setTyping(true)
+      if (isField(e.target) && inside(e.target)) setTyping(true)
     }
     const onOut = (e: FocusEvent) => {
       if (!inside(e.target)) return
       if (isField(e.relatedTarget) && inside(e.relatedTarget)) return
       setTyping(false)
     }
+    const probe = document.createElement("div")
+    probe.style.cssText = "position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top)"
+    document.body.appendChild(probe)
     const vv = window.visualViewport
-    const read = () =>
-      setVp({
-        top: vv ? Math.max(0, Math.round(vv.offsetTop)) : 0,
-        height: vv ? Math.round(vv.height) : window.innerHeight,
-        full: window.innerHeight,
-      })
+    let raf = 0
+    const read = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() =>
+        setVp({
+          top: vv ? Math.max(0, vv.offsetTop) : 0,
+          height: vv ? vv.height : window.innerHeight,
+          full: window.innerHeight,
+          safeTop: parseFloat(getComputedStyle(probe).paddingTop) || 0,
+        }),
+      )
+    }
     document.addEventListener("focusin", onIn)
     document.addEventListener("focusout", onOut)
     vv?.addEventListener("resize", read)
     vv?.addEventListener("scroll", read)
+    window.addEventListener("resize", read)
     read()
     return () => {
+      cancelAnimationFrame(raf)
+      probe.remove()
       document.removeEventListener("focusin", onIn)
       document.removeEventListener("focusout", onOut)
       vv?.removeEventListener("resize", read)
       vv?.removeEventListener("scroll", read)
+      window.removeEventListener("resize", read)
     }
   }, [ref, enabled])
-  return { typing, vp }
+
+  // the sheet's own height (it changes while typing filters a list)
+  React.useEffect(() => {
+    if (!enabled) return
+    let ro: ResizeObserver | null = null
+    let tries = 0
+    const attach = () => {
+      const el = ref.current
+      if (!el) {
+        if (tries++ < 20) requestAnimationFrame(attach)
+        return
+      }
+      ro = new ResizeObserver(() => setH(el.offsetHeight))
+      ro.observe(el)
+      setH(el.offsetHeight)
+    }
+    attach()
+    return () => ro?.disconnect()
+  }, [ref, enabled, typing])
+
+  if (!enabled || !vp.full) return null
+  const keyboard = Math.max(0, vp.full - (vp.top + vp.height))
+  const gap = 12
+  if (keyboard > 80) {
+    const room = vp.height - vp.safeTop - gap * 2
+    return { lift: keyboard + gap, maxHeight: room, keyboardOpen: true }
+  }
+  if (typing) {
+    const cap = Math.round(vp.full * 0.5)
+    const height = Math.min(h || cap, cap)
+    const targetBottom = vp.top + vp.safeTop + gap + height
+    return { lift: Math.max(0, vp.full - targetBottom), maxHeight: cap, keyboardOpen: true }
+  }
+  return { lift: 0, maxHeight: null as number | null, keyboardOpen: false }
 }
 
 function SheetContent({
@@ -104,26 +154,22 @@ function SheetContent({
   showCloseButton?: boolean
 }) {
   const contentRef = React.useRef<HTMLDivElement>(null)
-  const { typing, vp } = useTyping(contentRef, side === "bottom")
-  const keyboardKnown = vp.full > 0 && vp.height < vp.full * 0.85
-  const room = keyboardKnown ? vp.height : Math.round(vp.full * 0.5)
-  const docked: React.CSSProperties | undefined =
-    side === "bottom" && typing
-      ? {
-          top: `calc(${vp.top}px + env(safe-area-inset-top) + 12px)`,
-          bottom: "auto",
-          borderRadius: 24,
-          maxHeight: `calc(${room}px - env(safe-area-inset-top) - 24px)`,
-          paddingBottom: 0,
-        }
-      : undefined
+  const kb = useKeyboardLift(contentRef, side === "bottom")
+  const lifted: React.CSSProperties | undefined = kb
+    ? {
+        translate: `0 ${-kb.lift}px`,
+        transition: "translate 300ms cubic-bezier(.2,.8,.2,1), border-radius 300ms, max-height 300ms",
+        ...(kb.keyboardOpen ? { borderRadius: 24, paddingBottom: 0 } : null),
+        ...(kb.maxHeight ? { maxHeight: kb.maxHeight } : null),
+      }
+    : undefined
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         ref={contentRef}
-        style={docked ? { ...style, ...docked } : style}
+        style={lifted ? { ...style, ...lifted } : style}
         // don't jump into the first input (that pops up the keyboard on phones);
         // focus the sheet itself so screen readers and keyboards still land inside
         onOpenAutoFocus={(e) => {
