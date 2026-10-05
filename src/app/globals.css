@@ -103,7 +103,7 @@
   font-stretch: 72%;
 }
 @utility pb-safe-nav {
-  padding-bottom: calc(110px + env(safe-area-inset-bottom));
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
 /* Motion — only transform / opacity / stroke offsets */
