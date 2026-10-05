@@ -77,6 +77,7 @@ function Progress() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="sticky-head flex flex-col gap-4">
       <h1 className="anim-rise font-wide text-[30px] font-black tracking-tight uppercase">{t.progressTitle}</h1>
 
       <button
@@ -98,6 +99,7 @@ function Progress() {
           <ChevronDown />
         </span>
       </button>
+      </div>
 
       <div role="tablist" aria-label={t.weight} className="anim-rise relative grid grid-cols-3 gap-1 rounded-2xl bg-card p-1" style={{ "--i": 2 } as React.CSSProperties}>
         {(
@@ -206,7 +208,7 @@ function Progress() {
                 const up = prev && (p.maxWeight > prev.maxWeight || (p.maxWeight === prev.maxWeight && p.repsAtMax > prev.repsAtMax))
                 return (
                   <li key={p.date} className="flex h-12 items-center gap-3 border-b border-border px-4 last:border-0">
-                    <span className="num w-16 text-[13px] text-muted-foreground">{formatDate(p.date, lang)}</span>
+                    <span className="num w-[84px] shrink-0 text-[13px] whitespace-nowrap text-muted-foreground">{formatDate(p.date, lang)}</span>
                     <span className="num flex-1 text-[13px]">
                       {formatKg(p.maxWeight)} kg × {p.repsAtMax}
                     </span>

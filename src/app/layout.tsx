@@ -5,13 +5,13 @@ import "./globals.css"
 import { AppProvider } from "@/components/app-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { ServiceWorker } from "@/components/service-worker"
-import { ACCENT_BOOT_SCRIPT, APP_HEIGHT_SCRIPT } from "@/lib/accent"
+import { ACCENT_BOOT_SCRIPT } from "@/lib/accent"
 
 export const metadata: Metadata = {
   title: "Gym Tracker",
   description: "Trainingsplan, Sätze und Fortschritt – mit Gewicht und Wiederholungen.",
   applicationName: "Gym Tracker",
-  appleWebApp: { capable: true, title: "GymTracker", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "GymTracker", statusBarStyle: "black" },
   icons: {
     icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="de" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: ACCENT_BOOT_SCRIPT + APP_HEIGHT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: ACCENT_BOOT_SCRIPT }} />
       </head>
       <body>
         <AppProvider>

@@ -44,31 +44,47 @@ function SheetOverlay({
 }
 
 /**
- * iOS doesn't shrink the layout when the keyboard opens, so a bottom sheet would end up
- * behind it. Track the visual viewport and lift the sheet above the keyboard instead.
+ * Bottom sheets and the on-screen keyboard.
+ *
+ * iOS often reports the keyboard late or not at all to the page, so the sheet can't rely on
+ * measuring it. Instead, as soon as a text field inside the sheet is focused, the sheet
+ * docks to the top of the screen (just under the status bar). The keyboard can then only
+ * ever cover the empty space below it. When the visual viewport is known, the sheet is
+ * additionally capped to the visible height so long sheets scroll inside.
  */
-function useKeyboardInset(enabled: boolean) {
-  const [state, setState] = React.useState<{ inset: number; height: number } | null>(null)
+function useTyping(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean) {
+  const [typing, setTyping] = React.useState(false)
+  const [visible, setVisible] = React.useState<number | null>(null)
   React.useEffect(() => {
-    const vv = typeof window !== "undefined" ? window.visualViewport : null
-    if (!enabled || !vv) return
-    const update = () => {
-      const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
-      setState(inset > 40 ? { inset, height: Math.round(vv.height) } : null)
-      if (inset > 40) {
-        const el = document.activeElement as HTMLElement | null
-        if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) requestAnimationFrame(() => el.scrollIntoView({ block: "nearest" }))
-      }
+    if (!enabled) return
+    // listen on the document: the sheet content mounts later than this component
+    const inside = (n: EventTarget | null) => n instanceof Node && !!ref.current?.contains(n)
+    const isField = (t: EventTarget | null) =>
+      t instanceof HTMLElement && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !/^(checkbox|radio|file|button|submit)$/.test((t as HTMLInputElement).type)))
+    const onIn = (e: FocusEvent) => {
+      if (!isField(e.target) || !inside(e.target)) return
+      setTyping(true)
+      const t = e.target as HTMLElement
+      setTimeout(() => t.scrollIntoView({ block: "nearest" }), 320)
     }
-    vv.addEventListener("resize", update)
-    vv.addEventListener("scroll", update)
-    update()
+    const onOut = (e: FocusEvent) => {
+      if (!inside(e.target)) return
+      if (isField(e.relatedTarget) && inside(e.relatedTarget)) return
+      setTyping(false)
+    }
+    document.addEventListener("focusin", onIn)
+    document.addEventListener("focusout", onOut)
+    const vv = window.visualViewport
+    const onVV = () => setVisible(vv ? Math.round(vv.height) : null)
+    vv?.addEventListener("resize", onVV)
+    onVV()
     return () => {
-      vv.removeEventListener("resize", update)
-      vv.removeEventListener("scroll", update)
+      document.removeEventListener("focusin", onIn)
+      document.removeEventListener("focusout", onOut)
+      vv?.removeEventListener("resize", onVV)
     }
-  }, [enabled])
-  return state
+  }, [ref, enabled])
+  return { typing, visible }
 }
 
 function SheetContent({
@@ -83,13 +99,25 @@ function SheetContent({
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
-  const kb = useKeyboardInset(side === "bottom")
+  const contentRef = React.useRef<HTMLDivElement>(null)
+  const { typing, visible } = useTyping(contentRef, side === "bottom")
+  const docked: React.CSSProperties | undefined =
+    side === "bottom" && typing
+      ? {
+          top: "calc(env(safe-area-inset-top) + 8px)",
+          bottom: "auto",
+          borderRadius: 24,
+          maxHeight: visible ? `calc(${visible}px - env(safe-area-inset-top) - 16px)` : "60dvh",
+          paddingBottom: 0,
+        }
+      : undefined
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
-        style={kb ? { ...style, bottom: kb.inset, maxHeight: `calc(${kb.height}px - env(safe-area-inset-top) - 12px)`, paddingBottom: 0 } : style}
+        ref={contentRef}
+        style={docked ? { ...style, ...docked } : style}
         // don't jump into the first input (that pops up the keyboard on phones);
         // focus the sheet itself so screen readers and keyboards still land inside
         onOpenAutoFocus={(e) => {

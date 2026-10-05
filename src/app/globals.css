@@ -104,6 +104,17 @@
 @utility font-narrow {
   font-stretch: 72%;
 }
+/* stays on top while the page scrolls; full-bleed background so content slides under it */
+@utility sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin-inline: -20px;
+  margin-top: -8px;
+  padding: 8px 20px 12px;
+  background: linear-gradient(to bottom, var(--background) 85%, color-mix(in srgb, var(--background) 0%, transparent));
+}
+
 @utility pb-safe-nav {
   padding-bottom: calc(84px + env(safe-area-inset-bottom));
 }

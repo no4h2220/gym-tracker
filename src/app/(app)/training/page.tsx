@@ -155,7 +155,7 @@ export default function TrainingPage() {
   }
 
   const header = (
-    <header className="anim-rise flex items-end justify-between gap-4">
+    <header className="sticky-head anim-rise flex items-end justify-between gap-4">
       <div className="flex min-w-0 flex-col gap-1.5">
         <span className="num text-xs tracking-[.08em] text-muted-foreground uppercase">
           {formatDate(date, lang, { weekday: "long", day: "numeric", month: "short" })}

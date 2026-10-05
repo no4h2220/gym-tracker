@@ -34,7 +34,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // spot on every tab and doesn't depend on how long the page is or how iOS sizes
   // the viewport on launch.
   return (
-    <div className="fixed inset-x-0 top-0 flex h-[var(--app-h,100dvh)] flex-col overflow-hidden bg-background">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-background">
       <div id="app-scroll" className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
         <motion.main
           key={pathname}
@@ -42,7 +42,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}
           className="mx-auto w-full max-w-[480px] px-5 pb-safe-nav"
-          style={{ paddingTop: "calc(20px + env(safe-area-inset-top))" }}
+          style={{ paddingTop: "calc(8px + env(safe-area-inset-top))" }}
         >
           {children}
         </motion.main>

@@ -24,13 +24,6 @@ export function applyAccent(id: string) {
   } catch {}
 }
 
-/**
- * Height of the app frame. In an iOS home-screen app the layout viewport can end above
- * the home-indicator area, which leaves an empty strip under the tab bar. There we size
- * the frame to the full screen instead.
- */
-export const APP_HEIGHT_SCRIPT = `(function(){function s(){try{var st=(window.navigator.standalone===true)||window.matchMedia("(display-mode: standalone)").matches;var d=document.documentElement;if(!st){d.style.removeProperty("--app-h");return}var p=window.innerHeight>=window.innerWidth;var sh=p?Math.max(screen.width,screen.height):Math.min(screen.width,screen.height);d.style.setProperty("--app-h",Math.max(window.innerHeight,sh)+"px")}catch(e){}}s();window.addEventListener("resize",s);window.addEventListener("orientationchange",function(){setTimeout(s,250)});window.addEventListener("pageshow",s)})();`
-
 /** Runs before first paint (inline script in the root layout) so the accent never flashes. */
 export const ACCENT_BOOT_SCRIPT = `(function(){try{var m=${JSON.stringify(
   Object.fromEntries(ACCENTS.map((a) => [a.id, a.hex])),
