@@ -508,18 +508,54 @@ function PlansSheet({ open, onClose, current, onPick }: { open: boolean; onClose
   )
 }
 
-function NumberField({ id, label, value, onChange, min = 0, max = 999 }: { id: string; label: string; value: number | null; onChange: (v: number | null) => void; min?: number; max?: number }) {
+/**
+ * Number input that lets you clear the field and type freely.
+ * Only digits are accepted; the value is clamped when the field loses focus
+ * (an empty field falls back to `fallback`, or stays empty when `optional`).
+ */
+function NumberField({
+  id,
+  label,
+  value,
+  onChange,
+  min = 0,
+  max = 999,
+  optional = false,
+  fallback,
+}: {
+  id: string
+  label: string
+  value: number | null
+  onChange: (v: number | null) => void
+  min?: number
+  max?: number
+  optional?: boolean
+  fallback?: number
+}) {
+  const [text, setText] = useState<string | null>(null)
+  const shown = text ?? (value === null ? "" : String(value))
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
         inputMode="numeric"
+        pattern="[0-9]*"
+        enterKeyHint="done"
+        autoComplete="off"
         className="num"
-        value={value ?? ""}
+        value={shown}
+        onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => {
-          const v = e.target.value.replace(/\D/g, "")
-          onChange(v === "" ? null : Math.min(max, Math.max(min, Number(v))))
+          const v = e.target.value.replace(/\D/g, "").slice(0, 4)
+          setText(v)
+          if (v !== "") onChange(Number(v))
+        }}
+        onBlur={() => {
+          const v = text ?? shown
+          if (v === "") onChange(optional ? null : (fallback ?? min))
+          else onChange(Math.min(max, Math.max(min, Number(v))))
+          setText(null)
         }}
       />
     </div>
@@ -552,7 +588,12 @@ function ItemSheet({
     if (!cur || !exercise) return
     setBusy(true)
     try {
-      const it = { ...cur.it, reps_max: Math.max(cur.it.reps_min, cur.it.reps_max) }
+      const clamp = (v: number | null, lo: number, hi: number, d: number) => (v === null || !Number.isFinite(v) ? d : Math.min(hi, Math.max(lo, Math.round(v))))
+      const sets = clamp(cur.it.sets, 1, 10, 2)
+      const repsMin = clamp(cur.it.reps_min, 1, 100, 8)
+      const repsMax = Math.max(repsMin, clamp(cur.it.reps_max, 1, 100, repsMin))
+      const restMax = cur.it.rest_max_seconds === null ? null : clamp(cur.it.rest_max_seconds, 0, 900, 0)
+      const it = { ...cur.it, sets, reps_min: repsMin, reps_max: repsMax, rest_seconds: clamp(cur.it.rest_seconds, 0, 900, 90), rest_max_seconds: restMax }
       const name = cur.name.trim().replace(/\s+/g, " ") || exercise.name
       await updatePlanItem(it.id, {
         sets: it.sets,
@@ -603,13 +644,13 @@ function ItemSheet({
               <Input id="ex-name" value={cur.name} maxLength={80} onChange={(e) => setDraft({ ...cur, name: e.target.value })} />
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <NumberField id="sets" label={t.sets} value={cur.it.sets} min={1} max={10} onChange={(v) => set({ sets: v ?? 1 })} />
-              <NumberField id="rmin" label={t.repsMin} value={cur.it.reps_min} min={1} max={100} onChange={(v) => set({ reps_min: v ?? 1 })} />
-              <NumberField id="rmax" label={t.repsMax} value={cur.it.reps_max} min={1} max={100} onChange={(v) => set({ reps_max: v ?? 1 })} />
+              <NumberField id="sets" label={t.sets} value={cur.it.sets} min={1} max={10} fallback={item?.sets} onChange={(v) => set({ sets: v ?? 1 })} />
+              <NumberField id="rmin" label={t.repsMin} value={cur.it.reps_min} min={1} max={100} fallback={item?.reps_min} onChange={(v) => set({ reps_min: v ?? 1 })} />
+              <NumberField id="rmax" label={t.repsMax} value={cur.it.reps_max} min={1} max={100} fallback={item?.reps_max} onChange={(v) => set({ reps_max: v ?? 1 })} />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <NumberField id="rest" label={t.restSec} value={cur.it.rest_seconds} max={900} onChange={(v) => set({ rest_seconds: v ?? 0 })} />
-              <NumberField id="restmax" label={`${t.restSec} max`} value={cur.it.rest_max_seconds} max={900} onChange={(v) => set({ rest_max_seconds: v })} />
+              <NumberField id="rest" label={t.restSec} value={cur.it.rest_seconds} max={900} fallback={item?.rest_seconds} onChange={(v) => set({ rest_seconds: v ?? 0 })} />
+              <NumberField id="restmax" label={`${t.restSec} max`} value={cur.it.rest_max_seconds} max={900} optional onChange={(v) => set({ rest_max_seconds: v })} />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="ex-notes">{t.notes}</Label>

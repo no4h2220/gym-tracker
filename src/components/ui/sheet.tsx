@@ -43,22 +43,53 @@ function SheetOverlay({
   )
 }
 
+/**
+ * iOS doesn't shrink the layout when the keyboard opens, so a bottom sheet would end up
+ * behind it. Track the visual viewport and lift the sheet above the keyboard instead.
+ */
+function useKeyboardInset(enabled: boolean) {
+  const [state, setState] = React.useState<{ inset: number; height: number } | null>(null)
+  React.useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null
+    if (!enabled || !vv) return
+    const update = () => {
+      const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
+      setState(inset > 40 ? { inset, height: Math.round(vv.height) } : null)
+      if (inset > 40) {
+        const el = document.activeElement as HTMLElement | null
+        if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) requestAnimationFrame(() => el.scrollIntoView({ block: "nearest" }))
+      }
+    }
+    vv.addEventListener("resize", update)
+    vv.addEventListener("scroll", update)
+    update()
+    return () => {
+      vv.removeEventListener("resize", update)
+      vv.removeEventListener("scroll", update)
+    }
+  }, [enabled])
+  return state
+}
+
 function SheetContent({
   className,
   children,
   side = "right",
   showCloseButton = true,
   onOpenAutoFocus,
+  style,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
+  const kb = useKeyboardInset(side === "bottom")
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
+        style={kb ? { ...style, bottom: kb.inset, maxHeight: `calc(${kb.height}px - env(safe-area-inset-top) - 12px)`, paddingBottom: 0 } : style}
         // don't jump into the first input (that pops up the keyboard on phones);
         // focus the sheet itself so screen readers and keyboards still land inside
         onOpenAutoFocus={(e) => {

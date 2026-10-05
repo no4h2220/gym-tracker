@@ -53,7 +53,8 @@ export default function TrainingPage() {
 
   const exById = useMemo(() => new Map<string, Exercise>(exercises.map((e) => [e.id, e])), [exercises])
   const items = useMemo(() => day?.items ?? [], [day])
-  const exIds = useMemo(() => items.map((i) => i.exercise_id), [items])
+  // history for every exercise of the plan, loaded once: switching days is instant
+  const exIds = useMemo(() => [...new Set(sortedDays.flatMap((d) => d.items.map((i) => i.exercise_id)))].sort(), [sortedDays])
 
   const [last, setLast] = useState<Map<string, ExerciseSession>>(new Map())
   const [logged, setLogged] = useState<Logged>(new Map())
@@ -214,56 +215,31 @@ export default function TrainingPage() {
         </div>
       )}
 
-      <motion.section layout={!reduce} className="flex flex-col gap-2">
+      <motion.section
+        key={day?.id ?? "none"}
+        initial={reduce ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.16, ease: "easeOut" }}
+        className="flex flex-col gap-2"
+      >
         {items.map((it, idx) => {
           const ex = exById.get(it.exercise_id)
           if (!ex) return null
-          const lastS = last.get(it.exercise_id)
-          const open = active === it.exercise_id
-          const complete = isComplete(it)
-          if (!open) {
-            const summaryLogs = Array.from({ length: it.sets }, (_, i) => logged.get(key(it.exercise_id, i))).filter(Boolean) as { weight: number | null; reps: number | null }[]
-            const summary = summaryLogs.length
-              ? `${formatKg(summaryLogs[0].weight)} kg · ${summaryLogs.map((s) => s.reps ?? "–").join("/")}`
-              : lastS
-                ? `${t.last} ${formatKg(lastS.sets[0]?.weight)} × ${lastS.sets[0]?.reps ?? "–"}`
-                : `${it.sets} × ${it.reps_min}–${it.reps_max}`
-            return (
-              <motion.button
-                layout={!reduce ? "position" : false}
-                transition={{ layout: { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] } }}
-                key={it.id}
-                type="button"
-                onClick={() => setExpanded(it.exercise_id)}
-                className={cn(intro && "anim-rise", "flex min-h-14 items-center gap-3 rounded-2xl bg-card px-4 py-3.5 text-left transition-transform active:scale-[.98]")}
-                style={{ "--i": idx + 2 } as React.CSSProperties}
-                aria-expanded={false}
-              >
-                <span
-                  className={cn(
-                    "flex size-[26px] shrink-0 items-center justify-center rounded-[8px]",
-                    complete ? "bg-primary text-primary-foreground" : summaryLogs.length ? "border-[1.5px] border-primary" : "border-[1.5px] border-line-2",
-                  )}
-                >
-                  {complete && <CheckIcon />}
-                </span>
-                <span className={cn("min-w-0 flex-1 truncate text-[15px] font-semibold", complete && "text-muted-foreground")}>{ex.name}</span>
-                <span className="num shrink-0 text-[13px] text-muted-foreground">{summary}</span>
-              </motion.button>
-            )
-          }
           return (
-            <ActiveCard
+            <ExerciseItem
               key={it.id}
+              index={idx}
+              intro={intro}
               item={it}
               exercise={ex}
-              last={lastS}
+              last={last.get(it.exercise_id)}
               logged={logged}
               drafts={drafts}
               setDraft={(k, v) => setDrafts((d) => ({ ...d, [k]: { ...d[k], ...v } }))}
               placeholderFor={placeholderFor}
               onToggle={(i) => toggleSet(it, i)}
-              onCollapse={() => setExpanded("__none__")}
+              open={active === it.exercise_id}
+              onOpenChange={(o) => setExpanded(o ? it.exercise_id : "__none__")}
               rest={restLabel(it)}
             />
           )
@@ -273,7 +249,9 @@ export default function TrainingPage() {
   )
 }
 
-function ActiveCard({
+function ExerciseItem({
+  index,
+  intro,
   item,
   exercise,
   last,
@@ -282,9 +260,12 @@ function ActiveCard({
   setDraft,
   placeholderFor,
   onToggle,
-  onCollapse,
+  open,
+  onOpenChange,
   rest,
 }: {
+  index: number
+  intro: boolean
   item: PlanItem
   exercise: Exercise
   last: ExerciseSession | undefined
@@ -293,14 +274,17 @@ function ActiveCard({
   setDraft: (k: string, v: { w?: string; r?: string }) => void
   placeholderFor: (ex: string, i: number) => { w: number | null; r: number | null }
   onToggle: (i: number) => void
-  onCollapse: () => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
   rest: string
 }) {
   const { t } = useApp()
   const reduce = useReducedMotion()
-  const target = nextTarget(last?.sets, item.reps_min, item.reps_max)
   const doneSets = Array.from({ length: item.sets }, (_, i) => logged.get(key(item.exercise_id, i)))
+  const doneCount = doneSets.filter(Boolean).length
+  const complete = doneCount >= item.sets
   const firstOpenSet = doneSets.findIndex((s) => !s)
+  const target = nextTarget(last?.sets, item.reps_min, item.reps_max)
 
   let hint: string | null = null
   if (target) {
@@ -311,127 +295,169 @@ function ActiveCard({
     else hint = `${t.goal}: ${formatKg(target.weight)} × ${target.reps}`
   }
 
+  const done = doneSets.filter(Boolean) as { weight: number | null; reps: number | null }[]
+  const summary = done.length
+    ? `${formatKg(done[0].weight)} kg · ${done.map((s) => s.reps ?? "–").join("/")}`
+    : last
+      ? `${t.last} ${formatKg(last.sets[0]?.weight)} × ${last.sets[0]?.reps ?? "–"}`
+      : `${item.sets} × ${item.reps_min}–${item.reps_max}`
+
+  const bodyId = `ex-body-${item.id}`
+
   return (
-    <motion.article
-      layout={!reduce ? "position" : false}
-      initial={reduce ? false : { opacity: 0.6 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.12, ease: "easeOut", layout: { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] } }}
-      className="anim-glow flex flex-col gap-3.5 rounded-3xl bg-surface-hi px-4 pt-[18px] pb-4"
-    >
-      <div className="flex flex-col gap-2">
-        <button type="button" onClick={onCollapse} className="flex min-w-0 flex-col gap-1 text-left" aria-expanded={true}>
-          <h2 className="text-2xl leading-tight font-extrabold tracking-tight text-balance">{exercise.name}</h2>
-          <span className="num text-xs text-muted-foreground">
-            {item.sets} × {item.reps_min}–{item.reps_max} · {rest}
-          </span>
-        </button>
-        <span className="self-start rounded-full bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] px-2.5 py-1.5 text-xs font-semibold text-primary">
-          {last ? `${t.lastTime} ${formatKg(last.sets[0]?.weight)} × ${last.sets.map((s) => s.reps ?? "–").join(" · ")}` : t.noHistory}
-        </span>
-      </div>
-      {exercise.notes && <p className="text-[13px] text-text-2">{exercise.notes}</p>}
-
-      <div className="flex flex-col gap-2">
-        {Array.from({ length: item.sets }, (_, i) => {
-          const k = key(item.exercise_id, i)
-          const done = logged.get(k)
-          const ph = placeholderFor(item.exercise_id, i)
-          const lastSet = last?.sets[i]
-          const isCurrent = i === firstOpenSet
-          let delta: string | null = null
-          if (done && lastSet) {
-            if ((done.weight ?? 0) > (lastSet.weight ?? 0)) delta = `+${formatKg((done.weight ?? 0) - (lastSet.weight ?? 0))}kg`
-            else if ((done.weight ?? 0) === (lastSet.weight ?? 0) && (done.reps ?? 0) > (lastSet.reps ?? 0)) delta = `+${(done.reps ?? 0) - (lastSet.reps ?? 0)}`
-          }
-          return (
-            <div
-              key={k}
-              className={cn(
-                "flex items-center gap-2 rounded-[18px] bg-background p-1.5 transition-shadow duration-300",
-                isCurrent && "shadow-[inset_0_0_0_1.5px_var(--primary)]",
-              )}
-            >
-              <span className="num w-8 shrink-0 text-center text-xs text-muted-foreground">{i + 1}</span>
-              <label className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1">
-                <span className="sr-only">{t.weightOf(i + 1)}</span>
-                {done ? (
-                  <span className="num text-xl font-semibold">{formatKg(done.weight)}</span>
-                ) : (
-                  <input
-                    inputMode="decimal"
-                    enterKeyHint="next"
-                    className="num w-full min-w-0 bg-transparent text-center text-xl font-semibold outline-none placeholder:text-[#5A5F55]"
-                    placeholder={ph.w !== null ? formatKg(ph.w) : "0"}
-                    value={drafts[k]?.w ?? ""}
-                    onChange={(e) => setDraft(k, { w: e.target.value })}
-                    name={`w-${i}`}
-                    autoComplete="off"
-                  />
-                )}
-                <span className="text-xs text-muted-foreground">kg</span>
-              </label>
-              <span className="text-line-2" aria-hidden="true">
-                ×
-              </span>
-              <label className="relative flex h-11 min-w-0 flex-1 items-center justify-center gap-1">
-                <span className="sr-only">{t.repsOf(i + 1)}</span>
-                {done ? (
-                  <span className="num text-xl font-semibold">{done.reps ?? "–"}</span>
-                ) : (
-                  <input
-                    id={`r-${k}`}
-                    inputMode="numeric"
-                    enterKeyHint="done"
-                    className="num w-full min-w-0 bg-transparent text-center text-xl font-semibold outline-none placeholder:text-[#5A5F55]"
-                    placeholder={ph.r !== null ? String(ph.r) : "0"}
-                    value={drafts[k]?.r ?? ""}
-                    onChange={(e) => setDraft(k, { r: e.target.value })}
-                    onKeyDown={(e) => e.key === "Enter" && onToggle(i)}
-                    name={`r-${i}`}
-                    autoComplete="off"
-                  />
-                )}
-                <span className="text-xs text-muted-foreground">{t.reps}</span>
-                <AnimatePresence>
-                  {delta && (
-                    <motion.span
-                      key={delta}
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0, opacity: 0 }}
-                      transition={{ type: "spring", stiffness: 600, damping: 18 }}
-                      className="num absolute top-0 right-1 text-[10px] font-bold text-primary"
-                    >
-                      {delta}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </label>
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.88 }}
-                onClick={() => onToggle(i)}
-                aria-label={done ? t.setUndo(i + 1) : t.setDone(i + 1)}
-                aria-pressed={!!done}
-                className={cn(
-                  "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200",
-                  done ? "bg-primary text-primary-foreground" : "border-[1.5px] border-line-2 text-transparent",
-                )}
-              >
-                {done && <CheckIcon size={18} draw />}
-              </motion.button>
-            </div>
-          )
-        })}
-      </div>
-
-      {hint && (
-        <p className="flex items-center gap-2 text-[13px] text-primary" aria-live="polite">
-          <StarIcon />
-          {hint}
-        </p>
+    <article
+      className={cn(
+        intro && "anim-rise",
+        "rounded-[20px] transition-[background-color,box-shadow] duration-200",
+        open ? "anim-glow bg-surface-hi" : "bg-card",
       )}
-    </motion.article>
+      style={{ "--i": index + 2 } as React.CSSProperties}
+    >
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        className="flex min-h-14 w-full items-center gap-3 px-4 py-3.5 text-left"
+      >
+        <span
+          className={cn(
+            "flex size-[26px] shrink-0 items-center justify-center rounded-[8px] transition-colors duration-200",
+            complete ? "bg-primary text-primary-foreground" : done.length ? "border-[1.5px] border-primary" : "border-[1.5px] border-line-2",
+          )}
+        >
+          {complete && <CheckIcon />}
+        </span>
+        <span className={cn("min-w-0 flex-1 text-base font-bold transition-colors", open ? "leading-snug" : "truncate", complete && !open && "text-muted-foreground")}>{exercise.name}</span>
+        {!open && <span className="num shrink-0 text-[13px] text-muted-foreground">{summary}</span>}
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            id={bodyId}
+            key="body"
+            initial={reduce ? false : { height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            transition={{ height: { duration: 0.24, ease: [0.2, 0.8, 0.2, 1] }, opacity: { duration: 0.16 } }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col gap-3 px-4 pb-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="num text-xs text-muted-foreground">
+                  {item.sets} × {item.reps_min}–{item.reps_max} · {rest}
+                </span>
+                <span className="rounded-full bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] px-2.5 py-1 text-xs font-semibold text-primary">
+                  {last ? `${t.lastTime} ${formatKg(last.sets[0]?.weight)} × ${last.sets.map((s) => s.reps ?? "–").join(" · ")}` : t.noHistory}
+                </span>
+              </div>
+              {exercise.notes && <p className="text-[13px] text-text-2">{exercise.notes}</p>}
+
+              <div className="flex flex-col gap-2">
+                {Array.from({ length: item.sets }, (_, i) => {
+                  const k = key(item.exercise_id, i)
+                  const d = logged.get(k)
+                  const ph = placeholderFor(item.exercise_id, i)
+                  const lastSet = last?.sets[i]
+                  const isCurrent = i === firstOpenSet
+                  let delta: string | null = null
+                  if (d && lastSet) {
+                    if ((d.weight ?? 0) > (lastSet.weight ?? 0)) delta = `+${formatKg((d.weight ?? 0) - (lastSet.weight ?? 0))}kg`
+                    else if ((d.weight ?? 0) === (lastSet.weight ?? 0) && (d.reps ?? 0) > (lastSet.reps ?? 0)) delta = `+${(d.reps ?? 0) - (lastSet.reps ?? 0)}`
+                  }
+                  return (
+                    <div
+                      key={k}
+                      className={cn(
+                        "flex items-center gap-2 rounded-[18px] bg-background p-1.5 transition-shadow duration-200",
+                        isCurrent && "shadow-[inset_0_0_0_1.5px_var(--primary)]",
+                      )}
+                    >
+                      <span className="num w-8 shrink-0 text-center text-xs text-muted-foreground">{i + 1}</span>
+                      <label className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1">
+                        <span className="sr-only">{t.weightOf(i + 1)}</span>
+                        {d ? (
+                          <span className="num text-xl font-semibold">{formatKg(d.weight)}</span>
+                        ) : (
+                          <input
+                            inputMode="decimal"
+                            enterKeyHint="next"
+                            className="num w-full min-w-0 bg-transparent text-center text-xl font-semibold outline-none placeholder:text-[#5A5F55]"
+                            placeholder={ph.w !== null ? formatKg(ph.w) : "0"}
+                            value={drafts[k]?.w ?? ""}
+                            onChange={(e) => setDraft(k, { w: e.target.value })}
+                            name={`w-${i}`}
+                            autoComplete="off"
+                          />
+                        )}
+                        <span className="text-xs text-muted-foreground">kg</span>
+                      </label>
+                      <span className="text-line-2" aria-hidden="true">
+                        ×
+                      </span>
+                      <label className="relative flex h-11 min-w-0 flex-1 items-center justify-center gap-1">
+                        <span className="sr-only">{t.repsOf(i + 1)}</span>
+                        {d ? (
+                          <span className="num text-xl font-semibold">{d.reps ?? "–"}</span>
+                        ) : (
+                          <input
+                            id={`r-${k}`}
+                            inputMode="numeric"
+                            enterKeyHint="done"
+                            className="num w-full min-w-0 bg-transparent text-center text-xl font-semibold outline-none placeholder:text-[#5A5F55]"
+                            placeholder={ph.r !== null ? String(ph.r) : "0"}
+                            value={drafts[k]?.r ?? ""}
+                            onChange={(e) => setDraft(k, { r: e.target.value })}
+                            onKeyDown={(e) => e.key === "Enter" && onToggle(i)}
+                            name={`r-${i}`}
+                            autoComplete="off"
+                          />
+                        )}
+                        <span className="text-xs text-muted-foreground">{t.reps}</span>
+                        <AnimatePresence>
+                          {delta && (
+                            <motion.span
+                              key={delta}
+                              initial={{ scale: 0, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              exit={{ scale: 0, opacity: 0 }}
+                              transition={{ type: "spring", stiffness: 600, damping: 18 }}
+                              className="num absolute top-0 right-1 text-[10px] font-bold text-primary"
+                            >
+                              {delta}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </label>
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.88 }}
+                        onClick={() => onToggle(i)}
+                        aria-label={d ? t.setUndo(i + 1) : t.setDone(i + 1)}
+                        aria-pressed={!!d}
+                        className={cn(
+                          "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200",
+                          d ? "bg-primary text-primary-foreground" : "border-[1.5px] border-line-2 text-transparent",
+                        )}
+                      >
+                        {d && <CheckIcon size={18} draw />}
+                      </motion.button>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {hint && (
+                <p className="flex items-center gap-2 text-[13px] text-primary" aria-live="polite">
+                  <StarIcon />
+                  {hint}
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </article>
   )
 }
