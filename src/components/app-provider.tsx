@@ -54,14 +54,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(initialLang)
 
   useEffect(() => {
+    // A password-reset link signs the user in; make sure they land on the page that sets the new password.
+    const toReset = () => {
+      if (window.location.pathname !== "/reset-password") window.location.replace("/reset-password")
+    }
+    const recovering = /type=recovery/.test(window.location.hash)
     const sb = supabase()
     sb.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setAuthReady(true)
+      if (recovering && data.session) toReset()
     })
-    const { data: sub } = sb.auth.onAuthStateChange((_e, s) => {
+    const { data: sub } = sb.auth.onAuthStateChange((e, s) => {
       setSession(s)
       setAuthReady(true)
+      if (e === "PASSWORD_RECOVERY") toReset()
       if (!s) {
         setProfile(null)
         setPlansState([])

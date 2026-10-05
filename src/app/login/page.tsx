@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 export default function LoginPage() {
   const { session, t, lang, setLang } = useApp()
   const router = useRouter()
-  const [mode, setMode] = useState<"login" | "signup">("login")
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
@@ -24,6 +24,12 @@ export default function LoginPage() {
     if (session) router.replace("/training")
   }, [session, router])
 
+  function switchMode(m: "login" | "signup" | "forgot") {
+    setMode(m)
+    setError(null)
+    setInfo(null)
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -31,7 +37,13 @@ export default function LoginPage() {
     setBusy(true)
     const sb = supabase()
     try {
-      if (mode === "login") {
+      if (mode === "forgot") {
+        const { error } = await sb.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}/reset-password`,
+        })
+        if (error) setError(error.message)
+        else setInfo(t.resetMailSent)
+      } else if (mode === "login") {
         const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password })
         if (error) setError(t.authError)
       } else {
@@ -65,7 +77,7 @@ export default function LoginPage() {
           Tracker
         </h1>
         <p className="anim-rise text-muted-foreground" style={{ "--i": 2 } as React.CSSProperties}>
-          {t.welcome}
+          {mode === "forgot" ? t.forgotIntro : t.welcome}
         </p>
       </div>
 
@@ -99,8 +111,20 @@ export default function LoginPage() {
             placeholder="name@mail.ch…"
           />
         </div>
+        {mode !== "forgot" && (
         <div className="flex flex-col gap-2">
-          <Label htmlFor="password">{t.password}</Label>
+          <div className="flex items-baseline justify-between">
+            <Label htmlFor="password">{t.password}</Label>
+            {mode === "login" && (
+              <button
+                type="button"
+                className="-my-3 py-3 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => switchMode("forgot")}
+              >
+                {t.forgotPw}
+              </button>
+            )}
+          </div>
           <Input
             id="password"
             name="password"
@@ -118,24 +142,21 @@ export default function LoginPage() {
             </span>
           )}
         </div>
+        )}
         <div aria-live="polite" className="min-h-5 text-sm">
           {error && <p className="text-destructive">{error}</p>}
           {info && <p className="text-primary">{info}</p>}
         </div>
         <Button type="submit" size="lg" disabled={busy}>
-          {busy ? t.loading : mode === "login" ? t.login : t.signup}
+          {busy ? t.loading : mode === "forgot" ? t.sendResetLink : mode === "login" ? t.login : t.signup}
         </Button>
         <Button
           type="button"
           variant="ghost"
           className="text-muted-foreground"
-          onClick={() => {
-            setMode(mode === "login" ? "signup" : "login")
-            setError(null)
-            setInfo(null)
-          }}
+          onClick={() => switchMode(mode === "login" ? "signup" : "login")}
         >
-          {mode === "login" ? t.noAccount : t.haveAccount}
+          {mode === "login" ? t.noAccount : mode === "forgot" ? t.backToLogin : t.haveAccount}
         </Button>
       </form>
 
