@@ -77,11 +77,14 @@
   }
   html {
     background: var(--background);
+    height: 100%;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
     touch-action: manipulation;
     overscroll-behavior-y: none;
+    min-height: 100%;
+    min-height: 100dvh;
   }
   input, select, textarea {
     font-size: 16px;

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion, useReducedMotion } from "motion/react"
@@ -40,6 +41,31 @@ export function TabBar() {
   const pathname = usePathname()
   const { t } = useApp()
   const reduce = useReducedMotion()
+
+  // iOS home-screen apps sometimes lay out fixed elements with a stale viewport on launch
+  // (the bar sits too high until the first navigation). A tiny scroll nudge makes Safari
+  // recompute the viewport right away; repeat when the app comes back to the foreground.
+  useEffect(() => {
+    const nudge = () => {
+      const y = window.scrollY
+      window.scrollTo(0, y + 1)
+      window.scrollTo(0, y)
+    }
+    const raf = requestAnimationFrame(nudge)
+    const t1 = setTimeout(nudge, 150)
+    const t2 = setTimeout(nudge, 600)
+    const onShow = () => setTimeout(nudge, 50)
+    window.addEventListener("pageshow", onShow)
+    document.addEventListener("visibilitychange", onShow)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(t1)
+      clearTimeout(t2)
+      window.removeEventListener("pageshow", onShow)
+      document.removeEventListener("visibilitychange", onShow)
+    }
+  }, [])
+
   const tabs = [
     { href: "/training", label: t.tabTraining, Icon: IconTraining },
     { href: "/plan", label: t.tabPlan, Icon: IconPlan },
