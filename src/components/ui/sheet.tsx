@@ -55,10 +55,12 @@ function SheetOverlay({
  *   capped to half the screen, so the keyboard can't cover it;
  * - otherwise → resting position at the bottom.
  */
+// last measured keyboard height, so the next lift can start at the right spot right away
+const keyboardMemory = { height: 0 }
+
 function useKeyboardLift(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean) {
   const [typing, setTyping] = React.useState(false)
   const [vp, setVp] = React.useState({ top: 0, height: 0, full: 0, safeTop: 0 })
-  const [h, setH] = React.useState(0)
 
   React.useEffect(() => {
     if (!enabled) return
@@ -67,6 +69,15 @@ function useKeyboardLift(ref: React.RefObject<HTMLDivElement | null>, enabled: b
       t instanceof HTMLElement && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !/^(checkbox|radio|file|button|submit)$/.test((t as HTMLInputElement).type)))
     const onIn = (e: FocusEvent) => {
       if (isField(e.target) && inside(e.target)) setTyping(true)
+    }
+    // Start moving as soon as a field is touched and focus it without letting iOS scroll the
+    // page: otherwise iOS pans everything up first and our lift then pulls it back down.
+    const onTouch = (e: TouchEvent) => {
+      const t = e.target
+      if (!isField(t) || !inside(t) || document.activeElement === t) return
+      e.preventDefault()
+      setTyping(true)
+      ;(t as HTMLInputElement).focus({ preventScroll: true })
     }
     const onOut = (e: FocusEvent) => {
       if (!inside(e.target)) return
@@ -80,17 +91,22 @@ function useKeyboardLift(ref: React.RefObject<HTMLDivElement | null>, enabled: b
     let raf = 0
     const read = () => {
       cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() =>
+      raf = requestAnimationFrame(() => {
+        if (vv) {
+          const k = window.innerHeight - vv.height - Math.max(0, vv.offsetTop)
+          if (k > 80) keyboardMemory.height = k
+        }
         setVp({
           top: vv ? Math.max(0, vv.offsetTop) : 0,
           height: vv ? vv.height : window.innerHeight,
           full: window.innerHeight,
           safeTop: parseFloat(getComputedStyle(probe).paddingTop) || 0,
-        }),
-      )
+        })
+      })
     }
     document.addEventListener("focusin", onIn)
     document.addEventListener("focusout", onOut)
+    document.addEventListener("touchend", onTouch, { passive: false })
     vv?.addEventListener("resize", read)
     vv?.addEventListener("scroll", read)
     window.addEventListener("resize", read)
@@ -100,43 +116,25 @@ function useKeyboardLift(ref: React.RefObject<HTMLDivElement | null>, enabled: b
       probe.remove()
       document.removeEventListener("focusin", onIn)
       document.removeEventListener("focusout", onOut)
+      document.removeEventListener("touchend", onTouch)
       vv?.removeEventListener("resize", read)
       vv?.removeEventListener("scroll", read)
       window.removeEventListener("resize", read)
     }
   }, [ref, enabled])
 
-  // the sheet's own height (it changes while typing filters a list)
-  React.useEffect(() => {
-    if (!enabled) return
-    let ro: ResizeObserver | null = null
-    let tries = 0
-    const attach = () => {
-      const el = ref.current
-      if (!el) {
-        if (tries++ < 20) requestAnimationFrame(attach)
-        return
-      }
-      ro = new ResizeObserver(() => setH(el.offsetHeight))
-      ro.observe(el)
-      setH(el.offsetHeight)
-    }
-    attach()
-    return () => ro?.disconnect()
-  }, [ref, enabled, typing])
-
   if (!enabled || !vp.full) return null
-  const keyboard = Math.max(0, vp.full - (vp.top + vp.height))
   const gap = 12
+  // pan offset is ignored: the sheet is fixed, so only the keyboard's height matters
+  const keyboard = Math.max(0, vp.full - vp.height - vp.top)
   if (keyboard > 80) {
-    const room = vp.height - vp.safeTop - gap * 2
-    return { lift: keyboard + gap, maxHeight: room, keyboardOpen: true }
+    return { lift: keyboard + gap, maxHeight: vp.height - vp.safeTop - gap * 2, keyboardOpen: true }
   }
   if (typing) {
-    const cap = Math.round(vp.full * 0.5)
-    const height = Math.min(h || cap, cap)
-    const targetBottom = vp.top + vp.safeTop + gap + height
-    return { lift: Math.max(0, vp.full - targetBottom), maxHeight: cap, keyboardOpen: true }
+    // keyboard is opening (or iOS doesn't report it): use the last known height,
+    // else a typical phone keyboard (~42% of the screen)
+    const guess = keyboardMemory.height || Math.round(vp.full * 0.42)
+    return { lift: guess + gap, maxHeight: vp.full - guess - vp.safeTop - gap * 2, keyboardOpen: true }
   }
   return { lift: 0, maxHeight: null as number | null, keyboardOpen: false }
 }
@@ -158,7 +156,7 @@ function SheetContent({
   const lifted: React.CSSProperties | undefined = kb
     ? {
         translate: `0 ${-kb.lift}px`,
-        transition: "translate 300ms cubic-bezier(.2,.8,.2,1), border-radius 300ms, max-height 300ms",
+        transition: "translate 320ms cubic-bezier(.32,.72,0,1), border-radius 320ms",
         ...(kb.keyboardOpen ? { borderRadius: 24, paddingBottom: 0 } : null),
         ...(kb.maxHeight ? { maxHeight: kb.maxHeight } : null),
       }

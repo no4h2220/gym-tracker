@@ -13,8 +13,8 @@ export const metadata: Metadata = {
   applicationName: "Gym Tracker",
   appleWebApp: { capable: true, title: "GymTracker", statusBarStyle: "black" },
   icons: {
-    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+    icon: [{ url: "/app-icon/volt?size=192", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/app-icon/volt?size=180", sizes: "180x180" }],
   },
 }
 

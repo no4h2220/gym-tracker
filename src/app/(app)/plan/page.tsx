@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import { toast } from "sonner"
 import {
@@ -73,6 +73,16 @@ export default function PlanPage() {
   const [dayEdit, setDayEdit] = useState<PlanDay | "new" | null>(null)
   const [plansOpen, setPlansOpen] = useState(false)
   const [dragId, setDragId] = useState<string | null>(null)
+  // the day header sticks right below the sticky page title
+  const titleRef = useRef<HTMLDivElement>(null)
+  const [titleH, setTitleH] = useState(0)
+  useEffect(() => {
+    const el = titleRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setTitleH(el.offsetHeight))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [planReady])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
@@ -106,7 +116,9 @@ export default function PlanPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="anim-rise font-wide text-[30px] font-black tracking-tight uppercase">{t.planTitle}</h1>
+      <div ref={titleRef} className="sticky-head">
+        <h1 className="anim-rise font-wide text-[30px] font-black tracking-tight uppercase">{t.planTitle}</h1>
+      </div>
 
       <button
         type="button"
@@ -175,7 +187,10 @@ export default function PlanPage() {
 
       {day && (
         <>
-          <div className="anim-rise flex items-end justify-between gap-3" style={{ "--i": 3 } as React.CSSProperties}>
+          <div
+            className="anim-rise sticky z-10 -mx-5 -my-2 flex items-end justify-between gap-3 bg-background px-5 py-2"
+            style={{ "--i": 3, top: Math.max(0, titleH - 1) } as React.CSSProperties}
+          >
             <div className="min-w-0">
               <h2 className="truncate text-2xl font-extrabold">{day.label}</h2>
               {day.focus && <p className="truncate text-sm text-muted-foreground">{day.focus}</p>}

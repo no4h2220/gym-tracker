@@ -16,8 +16,24 @@ export function accentHex(id: string | null | undefined): string {
 export const ACCENT_STORAGE_KEY = "gt-accent"
 export const LANG_STORAGE_KEY = "gt-lang"
 
+export function setIconLinks(id: string) {
+  const href = `/app-icon/${id}?size=180`
+  let link = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')
+  if (!link) {
+    link = document.createElement("link")
+    link.rel = "apple-touch-icon"
+    document.head.appendChild(link)
+  }
+  if (link.getAttribute("href") !== href) link.href = href
+  const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"][type="image/png"]')
+  if (icon) icon.href = `/app-icon/${id}?size=192`
+  // the manifest is generated from this cookie, so a new install gets the matching icon
+  document.cookie = `gt-accent=${id}; path=/; max-age=31536000; samesite=lax`
+}
+
 export function applyAccent(id: string) {
   document.documentElement.style.setProperty("--accent-hex", accentHex(id))
+  setIconLinks(id)
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#0F100E")
   try {
     localStorage.setItem(ACCENT_STORAGE_KEY, id)
@@ -34,4 +50,4 @@ export const VIEWPORT_BOOT_SCRIPT = `(function(){function c(){try{var st=navigat
 /** Runs before first paint (inline script in the root layout) so the accent never flashes. */
 export const ACCENT_BOOT_SCRIPT = `(function(){try{var m=${JSON.stringify(
   Object.fromEntries(ACCENTS.map((a) => [a.id, a.hex])),
-)};var id=localStorage.getItem("${ACCENT_STORAGE_KEY}");if(id&&m[id])document.documentElement.style.setProperty("--accent-hex",m[id]);var l=localStorage.getItem("${LANG_STORAGE_KEY}");if(l==="en"||l==="de")document.documentElement.lang=l;}catch(e){}})();`
+)};var id=localStorage.getItem("${ACCENT_STORAGE_KEY}");if(id&&m[id]){document.documentElement.style.setProperty("--accent-hex",m[id]);document.addEventListener("DOMContentLoaded",function(){var l=document.querySelector('link[rel="apple-touch-icon"]');if(l)l.href="/app-icon/"+id+"?size=180"})}var l=localStorage.getItem("${LANG_STORAGE_KEY}");if(l==="en"||l==="de")document.documentElement.lang=l;}catch(e){}})();`
