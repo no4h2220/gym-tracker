@@ -46,45 +46,49 @@ function SheetOverlay({
 /**
  * Bottom sheets and the on-screen keyboard.
  *
- * iOS often reports the keyboard late or not at all to the page, so the sheet can't rely on
- * measuring it. Instead, as soon as a text field inside the sheet is focused, the sheet
- * docks to the top of the screen (just under the status bar). The keyboard can then only
- * ever cover the empty space below it. When the visual viewport is known, the sheet is
- * additionally capped to the visible height so long sheets scroll inside.
+ * While a text field inside the sheet is focused, the sheet docks to the top of the
+ * *visible* area: iOS pans the page up when the keyboard opens, so the position follows
+ * the visual viewport (offsetTop) and adds the safe area, which keeps it clear of the
+ * status bar / Dynamic Island on every device. Its height is capped to the space above
+ * the keyboard (or half the screen when iOS doesn't report the keyboard).
  */
 function useTyping(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean) {
   const [typing, setTyping] = React.useState(false)
-  const [visible, setVisible] = React.useState<number | null>(null)
+  const [vp, setVp] = React.useState<{ top: number; height: number; full: number }>({ top: 0, height: 0, full: 0 })
   React.useEffect(() => {
     if (!enabled) return
-    // listen on the document: the sheet content mounts later than this component
     const inside = (n: EventTarget | null) => n instanceof Node && !!ref.current?.contains(n)
     const isField = (t: EventTarget | null) =>
       t instanceof HTMLElement && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !/^(checkbox|radio|file|button|submit)$/.test((t as HTMLInputElement).type)))
     const onIn = (e: FocusEvent) => {
       if (!isField(e.target) || !inside(e.target)) return
       setTyping(true)
-      const t = e.target as HTMLElement
-      setTimeout(() => t.scrollIntoView({ block: "nearest" }), 320)
     }
     const onOut = (e: FocusEvent) => {
       if (!inside(e.target)) return
       if (isField(e.relatedTarget) && inside(e.relatedTarget)) return
       setTyping(false)
     }
+    const vv = window.visualViewport
+    const read = () =>
+      setVp({
+        top: vv ? Math.max(0, Math.round(vv.offsetTop)) : 0,
+        height: vv ? Math.round(vv.height) : window.innerHeight,
+        full: window.innerHeight,
+      })
     document.addEventListener("focusin", onIn)
     document.addEventListener("focusout", onOut)
-    const vv = window.visualViewport
-    const onVV = () => setVisible(vv ? Math.round(vv.height) : null)
-    vv?.addEventListener("resize", onVV)
-    onVV()
+    vv?.addEventListener("resize", read)
+    vv?.addEventListener("scroll", read)
+    read()
     return () => {
       document.removeEventListener("focusin", onIn)
       document.removeEventListener("focusout", onOut)
-      vv?.removeEventListener("resize", onVV)
+      vv?.removeEventListener("resize", read)
+      vv?.removeEventListener("scroll", read)
     }
   }, [ref, enabled])
-  return { typing, visible }
+  return { typing, vp }
 }
 
 function SheetContent({
@@ -100,15 +104,16 @@ function SheetContent({
   showCloseButton?: boolean
 }) {
   const contentRef = React.useRef<HTMLDivElement>(null)
-  const { typing, visible } = useTyping(contentRef, side === "bottom")
+  const { typing, vp } = useTyping(contentRef, side === "bottom")
+  const keyboardKnown = vp.full > 0 && vp.height < vp.full * 0.85
+  const room = keyboardKnown ? vp.height : Math.round(vp.full * 0.5)
   const docked: React.CSSProperties | undefined =
     side === "bottom" && typing
       ? {
-          // never under the status bar / Dynamic Island, even if iOS reports no safe area
-          top: "calc(max(env(safe-area-inset-top), 54px) + 10px)",
+          top: `calc(${vp.top}px + env(safe-area-inset-top) + 12px)`,
           bottom: "auto",
           borderRadius: 24,
-          maxHeight: visible ? `calc(${visible}px - max(env(safe-area-inset-top), 54px) - 20px)` : "55dvh",
+          maxHeight: `calc(${room}px - env(safe-area-inset-top) - 24px)`,
           paddingBottom: 0,
         }
       : undefined

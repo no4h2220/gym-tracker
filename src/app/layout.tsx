@@ -5,7 +5,7 @@ import "./globals.css"
 import { AppProvider } from "@/components/app-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { ServiceWorker } from "@/components/service-worker"
-import { ACCENT_BOOT_SCRIPT } from "@/lib/accent"
+import { ACCENT_BOOT_SCRIPT, VIEWPORT_BOOT_SCRIPT } from "@/lib/accent"
 
 export const metadata: Metadata = {
   title: "Gym Tracker",
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="de" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: ACCENT_BOOT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: ACCENT_BOOT_SCRIPT + VIEWPORT_BOOT_SCRIPT }} />
       </head>
       <body>
         <AppProvider>

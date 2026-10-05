@@ -51,8 +51,7 @@ export function TabBar() {
   return (
     <nav
       aria-label="Hauptnavigation"
-      className="absolute inset-x-0 z-40 mx-auto flex max-w-[448px] px-4"
-      style={{ bottom: "max(8px, calc(env(safe-area-inset-bottom) - 20px))" }}
+      className="tab-bar absolute inset-x-0 z-40 mx-auto flex max-w-[448px] px-4"
     >
       <div className="relative grid h-16 w-full grid-cols-4 rounded-[22px] bg-surface-2 p-1.5 shadow-[0_12px_32px_rgba(0,0,0,.5),inset_0_0_0_1px_#2C2F29]">
         {tabs.map(({ href, label, Icon }) => {

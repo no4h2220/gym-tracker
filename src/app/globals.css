@@ -110,10 +110,16 @@
   top: 0;
   z-index: 20;
   margin-inline: -20px;
-  margin-top: -8px;
-  padding: 8px 20px 12px;
+  /* reach under the status bar / Dynamic Island, keep the content below it */
+  margin-top: calc(-8px - env(safe-area-inset-top));
+  padding: calc(8px + env(safe-area-inset-top)) 20px 12px;
   background: linear-gradient(to bottom, var(--background) 85%, color-mix(in srgb, var(--background) 0%, transparent));
 }
+
+/* tab bar: just above the home indicator on any device */
+.tab-bar { bottom: max(8px, calc(env(safe-area-inset-bottom) - 20px)); }
+/* web view ends above the home-indicator area (see VIEWPORT_BOOT_SCRIPT) */
+[data-short-viewport] .tab-bar { bottom: 6px; }
 
 @utility pb-safe-nav {
   padding-bottom: calc(84px + env(safe-area-inset-bottom));

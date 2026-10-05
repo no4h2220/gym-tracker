@@ -25,6 +25,7 @@ export function DisplayInfo() {
           `vv ${vv ? Math.round(vv.height) : "-"}`,
           `safe ${parseInt(cs.paddingTop)}/${parseInt(cs.paddingBottom)}`,
           `frame ${frame ? Math.round(frame.height) : "-"}`,
+          document.documentElement.hasAttribute("data-short-viewport") ? "short" : "full",
         ].join(" · "),
       )
     }

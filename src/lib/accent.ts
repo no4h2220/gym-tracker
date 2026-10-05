@@ -24,6 +24,13 @@ export function applyAccent(id: string) {
   } catch {}
 }
 
+/**
+ * Some iOS versions give a home-screen app a web view that is shorter than the screen by
+ * the top safe area, and don't paint the strip below it. When that's detected the tab bar
+ * sits right at the bottom of the web view instead of keeping home-indicator spacing.
+ */
+export const VIEWPORT_BOOT_SCRIPT = `(function(){function c(){try{var st=navigator.standalone===true||matchMedia("(display-mode: standalone)").matches;var d=document.documentElement;var p=document.createElement("div");p.style.cssText="position:fixed;top:0;left:0;visibility:hidden;padding-top:env(safe-area-inset-top)";(document.body||d).appendChild(p);var top=parseFloat(getComputedStyle(p).paddingTop)||0;p.remove();var portrait=innerHeight>=innerWidth;var sh=portrait?Math.max(screen.width,screen.height):Math.min(screen.width,screen.height);var short=st&&top>0&&Math.abs(innerHeight+top-sh)<=2;if(short)d.setAttribute("data-short-viewport","");else d.removeAttribute("data-short-viewport")}catch(e){}}if(document.body)c();else document.addEventListener("DOMContentLoaded",c);addEventListener("resize",c);addEventListener("pageshow",c)})();`
+
 /** Runs before first paint (inline script in the root layout) so the accent never flashes. */
 export const ACCENT_BOOT_SCRIPT = `(function(){try{var m=${JSON.stringify(
   Object.fromEntries(ACCENTS.map((a) => [a.id, a.hex])),
