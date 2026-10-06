@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { DICTS, type Dict } from "@/lib/i18n"
 import { ACCENTS, LANG_STORAGE_KEY, applyAccent } from "@/lib/accent"
 import { flushOutbox, loadPlan, loadProfile, updateProfile } from "@/lib/data"
+import { canSeeNutrition } from "@/lib/nutrition"
 import type { Exercise, Lang, Plan, PlanDay, Profile } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -20,6 +21,8 @@ interface AppState {
   days: PlanDay[]
   exercises: Exercise[]
   planReady: boolean
+  /** Ernährungs-Tab freigeschaltet (Prüfung in der DB); null = Antwort steht noch aus */
+  nutritionAccess: boolean | null
   lang: Lang
   t: Dict
   setLang: (l: Lang) => void
@@ -52,6 +55,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [exercises, setExercisesState] = useState<Exercise[]>([])
   const [planReady, setPlanReady] = useState(false)
   const [lang, setLangState] = useState<Lang>(initialLang)
+  const [access, setAccess] = useState<{ uid: string; ok: boolean } | null>(null)
 
   useEffect(() => {
     // A password-reset link signs the user in; make sure they land on the page that sets the new password.
@@ -118,6 +122,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       alive = false
     }
   }, [uid])
+
+  // Ernährungs-Tab: die Datenbank entscheidet (can_see_nutrition), pro eingeloggtem User
+  useEffect(() => {
+    if (!uid) return
+    let alive = true
+    const check = () =>
+      canSeeNutrition()
+        .then((ok) => alive && setAccess({ uid, ok }))
+        .catch(() => alive && setAccess((a) => (a?.uid === uid ? a : { uid, ok: false })))
+    check()
+    window.addEventListener("online", check)
+    return () => {
+      alive = false
+      window.removeEventListener("online", check)
+    }
+  }, [uid])
+  const nutritionAccess = uid && access?.uid === uid ? access.ok : null
 
   // offline sets: send them when we're back online
   useEffect(() => {
@@ -190,6 +211,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       days,
       exercises,
       planReady,
+      nutritionAccess,
       lang,
       t: DICTS[lang],
       setLang,
@@ -200,7 +222,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActivePlan,
       setExercises: (fn) => setExercisesState(fn),
     }),
-    [session, authReady, profile, plans, activePlan, days, exercises, planReady, lang, setLang, setAccent, setDisplayName, reloadPlan, setActivePlan],
+    [session, authReady, profile, plans, activePlan, days, exercises, planReady, nutritionAccess, lang, setLang, setAccent, setDisplayName, reloadPlan, setActivePlan],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
